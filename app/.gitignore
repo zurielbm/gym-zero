@@ -1,0 +1,6 @@
+node_modules
+dist
+*.local
+e2e/fail-*.png
+e2e/final-*.png
+.DS_Store

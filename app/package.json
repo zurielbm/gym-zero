@@ -1,0 +1,27 @@
+{
+  "name": "gym-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node e2e/flow.mjs"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "jsqr": "^1.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "playwright-core": "^1.62.1",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  }
+}
