@@ -6,13 +6,6 @@ the equipment's official instruction video (e.g. Life Fitness YouTube), and simp
 calories/protein food tracking. Everything persists in IndexedDB — no account, no
 server, works offline.
 
-## Docs
-
-- `gym_tracker_app_plan_qr_updated.html` — full app plan (architecture, data model, roadmap)
-- `gym_app_mock_ui.html` — interactive mock UI the app was built from
-  (published: https://pages.subir.dev/67af9fe3-f4d8-4e61-b4dc-53a9194549e5/)
-- `app/BACKEND_SPEC.md` — spec the data layer was implemented against
-
 ## App (`app/`)
 
 Vite + React + TypeScript. Data layer is Dexie (IndexedDB) behind the `DataAPI`
@@ -28,15 +21,6 @@ npm run dev -- --port 5199   # in one terminal…
 npm run e2e                  # …e2e flow test in another (needs playwright chromium cache)
 ```
 
-Status vs the roadmap: Phase 1 (local workout engine: routines, set logger with
-prev-performance, QR scan → machine mapping → instruction video, favorites, history)
-and Phase 2 (local food engine: calories/protein, saved meals, quick add) are done.
-Phase 3 (P2P sync), Phase 4 (Convex community layer), and Phase 5 (identity/polish)
-are not started.
-
-Camera QR scanning uses BarcodeDetector with a jsQR fallback and needs HTTPS or
-localhost; there's always a manual "paste the QR link" fallback on the scan screen.
-
 ## Sync (self-hosted Convex)
 
 Optional: a self-hosted Convex backend keeps the durable copy of personal data
@@ -46,3 +30,27 @@ Build the app with `VITE_CONVEX_URL` set to enable it; without it the app is
 identical to the local-only build. Server functions live in `app/convex/`.
 Production runs from the single `docker-compose.yml` at the repo root (app +
 Convex backend + dashboard + function deploy job) — see `DEPLOY.md`.
+
+### Production environment setup
+
+Set the production Convex environment variables from the repository root. Keep
+the private key and JWKS values quoted so their complete multiline/JSON values
+are passed unchanged:
+
+```bash
+pnpm prod:env set SITE_URL https://fin.baxcajay.cc
+pnpm prod:env set -- JWT_PRIVATE_KEY "PASTE_THE_COMPLETE_PRIVATE_KEY"
+pnpm prod:env set JWKS 'PASTE_THE_COMPLETE_JWKS_JSON'
+pnpm prod:env set FIN_API_ALLOWED_ORIGINS https://fin.baxcajay.cc
+```
+
+For a self-hosted deployment, open a terminal in the Convex backend container
+and generate its admin key:
+
+```bash
+cd /convex
+./generate_admin_key.sh
+```
+
+Save the generated key as `CONVEX_SELF_HOSTED_ADMIN_KEY`, then redeploy so the
+Convex functions are pushed. See `DEPLOY.md` for the complete deployment flow.
