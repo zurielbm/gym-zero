@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan(gy): Complete UI Redesign</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 76 76'%3E%3Crect width='76' height='76' rx='16' fill='%230d1117'/%3E%3Cpath fill='%23ffffff' d='M20,17L43.25,17L56,29.75L56,59L20,59ZM24,21L24,55L52,55L52,34L39,34L39,21ZM43,22.25L43,30L50.75,30ZM30,48L34,48L34,39.5L37,42.5L37,37.75L32,32.75L27,38.25L27,42.5L30,39.5ZM38,49L38,53L26,53L26,49Z'/%3E%3C/svg%3E">
+<style>
+/* ============ page chrome ============ */
+:root {
+  --pg-bg: #101318;
+  --pg-panel: #171c24;
+  --pg-panel2: #1d242f;
+  --pg-border: #2a3442;
+  --pg-text: #eef2f7;
+  --pg-muted: #97a5b6;
+  --pg-accent: #66e3a4;
+  --pg-blue: #74a7ff;
+  --pg-warn: #ffd166;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--pg-bg); color: var(--pg-text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1060px; margin: 0 auto; padding: 48px 24px 90px; }
+h1 { font-size: 2.1rem; letter-spacing: -0.03em; margin: 0 0 6px; font-weight: 800; }
+h2 { font-size: 1.5rem; letter-spacing: -0.02em; margin: 64px 0 6px; font-weight: 800; }
+h3 { font-size: 1.05rem; margin: 28px 0 8px; font-weight: 700; }
+.kicker { color: var(--pg-accent); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 0 0 10px; }
+.lede { color: var(--pg-muted); font-size: 1rem; max-width: 720px; margin: 0 0 8px; }
+p { max-width: 760px; }
+.muted { color: var(--pg-muted); }
+.pill { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; border: 1px solid var(--pg-border); background: var(--pg-panel); color: var(--pg-muted); margin-right: 6px; }
+.pill.green { color: var(--pg-accent); border-color: #2a5a44; background: #14261e; }
+.card { background: var(--pg-panel); border: 1px solid var(--pg-border); border-radius: 16px; padding: 20px 22px; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.88rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--pg-border); vertical-align: top; }
+th { color: var(--pg-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
+code { background: var(--pg-panel2); border: 1px solid var(--pg-border); border-radius: 6px; padding: 1px 6px; font-size: 0.83em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+.toc a { color: var(--pg-text); text-decoration: none; font-size: 0.8rem; font-weight: 600; padding: 7px 14px; border-radius: 999px; background: var(--pg-panel); border: 1px solid var(--pg-border); }
+.toc a:hover { border-color: var(--pg-accent); }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 2px; }
+.sw { width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14); position: relative; }
+.sw span { position: absolute; top: 44px; left: 0; font-size: 0.58rem; color: var(--pg-muted); white-space: nowrap; }
+.swatches .sw { margin-bottom: 22px; }
+
+/* current-state diagram */
+.flowmap { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+.flownode { background: var(--pg-panel2); border: 1px solid var(--pg-border); border-radius: 10px; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; }
+.flownode.hub { border-color: var(--pg-accent); color: var(--pg-accent); }
+.flowarrow { color: var(--pg-muted); font-size: 0.9rem; }
+
+/* ============ device frames ============ */
+.mockrow { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; margin: 22px 0 10px; }
+.mockcol { flex: 0 0 auto; }
+.mockcol.grow { flex: 1 1 460px; min-width: 320px; }
+.framelabel { text-align: center; font-size: 0.72rem; color: var(--pg-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin: 10px 0 0; }
+.phone {
+  width: 292px; border-radius: 40px; padding: 10px; background: #05060a;
+  border: 1px solid #333c49; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
+.phone .notch { width: 96px; height: 20px; background: #05060a; border-radius: 0 0 14px 14px; margin: 0 auto; position: relative; z-index: 9; margin-bottom: -20px; }
+.phone .scr { border-radius: 31px; overflow: hidden; height: 596px; position: relative; display: flex; flex-direction: column; }
+.browser {
+  width: 100%; border-radius: 14px; overflow: hidden;
+  border: 1px solid #333c49; box-shadow: 0 24px 60px rgba(0,0,0,0.5); background: #05060a;
+}
+.browser .bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #10141b; border-bottom: 1px solid #232b36; }
+.browser .bar i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.browser .bar .url { flex: 1; margin-left: 10px; background: #1a212b; border-radius: 6px; font-size: 0.62rem; color: #8b98a9; padding: 3px 10px; font-family: ui-monospace, Menlo, monospace; }
+.browser .view { height: 520px; overflow: hidden; position: relative; }
+
+/* ============================================================
+   DESIGN 1 — NIGHTLIFT  (refined dark, glass + glow)
+   ============================================================ */
+.d1 { --bg: #0b0e14; --panel: rgba(255,255,255,0.045); --stroke: rgba(255,255,255,0.09);
+      --tx: #f2f5fa; --mut: #93a0b2; --grn: #55e8a0; --blu: #6fa4ff; --amb: #ffcf66;
+      font-family: Inter, system-ui, sans-serif; background: radial-gradient(90% 40% at 50% -5%, #14273d 0%, transparent 60%), var(--bg);
+      color: var(--tx); }
+.d1 .glasscard { background: var(--panel); border: 1px solid var(--stroke); border-radius: 18px; backdrop-filter: blur(6px); }
+.d1 .hero-num { font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.d1 .btn-start { background: linear-gradient(135deg, #55e8a0, #2fd487); color: #052012; font-weight: 800; border-radius: 16px; border: 0; box-shadow: 0 10px 30px rgba(85,232,160,0.28); }
+.d1 .navlab { font-size: 8px; color: var(--mut); font-weight: 600; }
+.d1 .navlab.on { color: var(--grn); }
+.d1 .miniring { border-radius: 50%; display: grid; place-items: center; }
+.d1 .miniring > div { border-radius: 50%; background: #0e1420; display: grid; place-items: center; flex-direction: column; }
+
+/* ============================================================
+   DESIGN 2 — DAYBOOK  (light editorial / paper)
+   ============================================================ */
+.d2 { --bg: #f5f2ea; --card: #fdfcf8; --ink: #211d17; --mut2: #7a736a; --line: #e2dccd;
+      --grn2: #2e6b4f; --org: #d96f32; --ambr: #b98a2f;
+      font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+.d2 .serif { font-family: Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+.d2 .papercard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(60,50,30,0.06); }
+.d2 .rule { border: 0; border-top: 1px solid var(--line); margin: 0; }
+.d2 .tag { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mut2); }
+.d2 .btn2 { background: var(--grn2); color: #f7f5ee; font-weight: 700; border-radius: 10px; border: 0; }
+
+/* ============================================================
+   DESIGN 3 — IGNITE  (bold athletic, electric lime)
+   ============================================================ */
+.d3 { --bg3: #0c0c0d; --ink3: #f4f4f2; --mut3: #82827e; --lime: #d8f34f; --line3: #26262a;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: var(--bg3); color: var(--ink3); }
+.d3 .cond { font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em; line-height: 0.92; }
+.d3 .huge { font-weight: 900; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; line-height: 0.9; }
+.d3 .hl { border-top: 1px solid var(--line3); }
+.d3 .limebtn { background: var(--lime); color: #101204; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; border: 0; border-radius: 0; }
+.d3 .outline { -webkit-text-stroke: 1px #3a3a3e; color: transparent; }
+
+/* phase timeline */
+.timeline { border-left: 2px solid var(--pg-border); margin: 20px 0 8px 8px; padding-left: 26px; }
+.tl-item { position: relative; padding-bottom: 26px; }
+.tl-item::before { content: ""; position: absolute; left: -33.5px; top: 5px; width: 13px; height: 13px; border-radius: 50%; background: var(--pg-bg); border: 3px solid var(--pg-accent); }
+.tl-item h3 { margin: 0 0 4px; }
+.tl-item .tl-meta { font-size: 0.72rem; color: var(--pg-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; }
+.tl-item ul { margin: 8px 0 0; padding-left: 18px; color: var(--pg-muted); font-size: 0.88rem; }
+.tl-item ul li { margin-bottom: 4px; }
+.tl-item ul b { color: var(--pg-text); font-weight: 600; }
+
+/* Q&A */
+.qa { border-left: 3px solid var(--pg-blue); }
+.qa h3 { margin-top: 0; color: var(--pg-blue); }
+.qa .why { font-size: 0.85rem; color: var(--pg-muted); }
+.qa .why b { color: var(--pg-text); }
+
+@media (max-width: 720px) {
+  .wrap { padding: 32px 14px 70px; }
+  .mockrow { gap: 18px; }
+  .phone { margin: 0 auto; }
+  .mockcol { width: 100%; }
+  .phone { display: block; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="kicker">Plan · Gym Tracker</p>
+<h1>Complete UI Redesign</h1>
+<p class="lede">A ground-up visual redo of the workout + food tracker. Three distinct design directions below, each mocked in <b style="color:var(--pg-text)">mobile</b> and <b style="color:var(--pg-text)">desktop</b> form, followed by the implementation plan. The data layer (<code>DataAPI</code> / Dexie) is untouched — this is a UI-only rebuild.</p>
+<div class="toc">
+  <a href="#current">Current state</a>
+  <a href="#d1">Design 1 · Nightlift</a>
+  <a href="#d2">Design 2 · Daybook</a>
+  <a href="#d3">Design 3 · Ignite</a>
+  <a href="#compare">Comparison</a>
+  <a href="#plan">Implementation plan</a>
+  <a href="#qa">Q&amp;A</a>
+</div>
+
+<!-- ================= CURRENT STATE ================= -->
+<h2 id="current">Where the UI is today</h2>
+<p class="lede">The app is a single 460px column that simply gets centered on desktop — there is no desktop layout at all. All styling lives in one <code>styles.css</code> with ad-hoc class names; screens are 8 React components behind a hand-rolled screen switcher.</p>
+
+<div class="card">
+  <div class="flowmap">
+    <span class="flownode hub">TabBar (4 tabs)</span><span class="flowarrow">→</span>
+    <span class="flownode">Home</span>
+    <span class="flownode">Routines → Workout → Summary</span>
+    <span class="flownode">Scan → Machine</span>
+    <span class="flownode">Food</span>
+    <span class="flownode">History</span>
+  </div>
+  <p class="muted" style="font-size:0.85rem; margin:6px 0 0;">8 screens, one shell, one stylesheet (~270 lines), FAB for QR scan on workout screens, rest-timer toast. Current palette: near-black blue <code>#0d1117</code>, mint <code>#66e3a4</code>, periwinkle <code>#74a7ff</code>.</p>
+</div>
+
+<p><b>What the redo must keep working:</b> routine-based set logging with previous-weights prefill, QR scan → machine video, calorie/protein rings and quick food logging, week activity + PR history, rest timer, offline/IndexedDB. <b>What it adds:</b> a real desktop experience (multi-pane layouts, sidebar navigation) instead of a centered phone column.</p>
+
+<!-- ============================================================ -->
+<!-- ================= DESIGN 1 — NIGHTLIFT ===================== -->
+<!-- ============================================================ -->
+<h2 id="d1">Design 1 — <span style="color:#55e8a0">Nightlift</span></h2>
+<p class="pill green">Evolution</p><p class="pill">Dark</p><p class="pill">Glass + glow</p>
+<p class="lede">The safest, most familiar direction: keeps the dark, night-gym mood and mint identity you already have, but rebuilds it with depth — glass panels over an ambient gradient, bigger stat typography, softer hierarchy. On desktop it becomes a real dashboard with an icon sidebar.</p>
+<div class="swatches">
+  <div class="sw" style="background:#0b0e14"><span>#0b0e14 bg</span></div>
+  <div class="sw" style="background:#141b28"><span>glass panel</span></div>
+  <div class="sw" style="background:#55e8a0"><span>#55e8a0 mint</span></div>
+  <div class="sw" style="background:#6fa4ff"><span>#6fa4ff blue</span></div>
+  <div class="sw" style="background:#ffcf66"><span>#ffcf66 PR</span></div>
+</div>
+
+<div class="mockrow">
+  <!-- D1 MOBILE -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr d1">
+      <div style="flex:1; overflow:hidden; padding:34px 16px 0;">
+        <div style="font-size:9px; color:var(--mut); font-weight:600;">THURSDAY, AUG 28</div>
+        <div style="font-size:20px; font-weight:800; letter-spacing:-0.03em; margin-top:2px;">Good evening 👋</div>
+        <div style="font-size:10px; color:var(--grn); font-weight:700; margin-top:2px;">🔥 3 workouts this week</div>
+        <button class="btn-start" style="width:100%; padding:14px; font-size:13px; margin-top:14px;">▶&nbsp;&nbsp;Start Workout</button>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <div class="glasscard" style="flex:1; padding:12px; text-align:center;">
+            <div class="miniring" style="width:68px; height:68px; margin:0 auto; background:conic-gradient(var(--grn) 0 262deg, #1d2634 262deg 360deg); padding:6px;">
+              <div style="width:100%; height:100%;"><div class="hero-num" style="font-size:14px;">1,840</div></div>
+            </div>
+            <div style="font-size:8.5px; color:var(--mut); margin-top:6px; font-weight:600;">CALORIES / 2,400</div>
+          </div>
+          <div class="glasscard" style="flex:1; padding:12px; text-align:center;">
+            <div class="miniring" style="width:68px; height:68px; margin:0 auto; background:conic-gradient(var(--blu) 0 205deg, #1d2634 205deg 360deg); padding:6px;">
+              <div style="width:100%; height:100%;"><div class="hero-num" style="font-size:14px;">102g</div></div>
+            </div>
+            <div style="font-size:8.5px; color:var(--mut); margin-top:6px; font-weight:600;">PROTEIN / 180g</div>
+          </div>
+        </div>
+        <div class="glasscard" style="margin-top:12px; padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; font-size:11px;"><b>Last workout</b><span style="color:var(--mut); font-size:9px;">08/26</span></div>
+          <div style="font-size:9.5px; color:var(--mut); margin-top:2px;">18 sets · 12,450 lb volume · 52 min</div>
+          <div style="display:inline-block; margin-top:7px; font-size:8.5px; font-weight:800; color:#052012; background:var(--grn); border-radius:999px; padding:3px 9px;">Chest Press PR 160×8</div>
+        </div>
+        <div class="glasscard" style="margin-top:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <div><b style="font-size:11px;">Log food</b><div style="font-size:9px; color:var(--mut);">Calories &amp; protein in two taps</div></div>
+          <span style="color:var(--blu); font-weight:800; font-size:16px;">＋</span>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-around; padding:10px 0 18px; border-top:1px solid var(--stroke); background:rgba(11,14,20,0.9);">
+        <div style="text-align:center;"><div style="font-size:13px;">⌂</div><div class="navlab on">Home</div></div>
+        <div style="text-align:center; opacity:0.75;"><div style="font-size:13px;">🏋</div><div class="navlab">Workout</div></div>
+        <div style="text-align:center; opacity:0.75;"><div style="font-size:13px;">🍽</div><div class="navlab">Food</div></div>
+        <div style="text-align:center; opacity:0.75;"><div style="font-size:13px;">📈</div><div class="navlab">History</div></div>
+      </div>
+    </div></div>
+    <p class="framelabel">Mobile · Home</p>
+  </div>
+
+  <!-- D1 DESKTOP -->
+  <div class="mockcol grow">
+    <div class="browser">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — dashboard</span></div>
+      <div class="view d1" style="display:flex;">
+        <!-- sidebar -->
+        <div style="width:168px; border-right:1px solid var(--stroke); padding:18px 12px; display:flex; flex-direction:column; gap:4px; background:rgba(5,7,11,0.45);">
+          <div style="font-weight:800; font-size:13px; letter-spacing:-0.02em; padding:0 8px 14px;">⚡ Gym<span style="color:var(--grn)">Tracker</span></div>
+          <div style="background:rgba(85,232,160,0.12); color:var(--grn); border-radius:9px; padding:7px 10px; font-size:10.5px; font-weight:700;">⌂&nbsp; Home</div>
+          <div style="color:var(--mut); padding:7px 10px; font-size:10.5px; font-weight:600;">🏋&nbsp; Workout</div>
+          <div style="color:var(--mut); padding:7px 10px; font-size:10.5px; font-weight:600;">🍽&nbsp; Food</div>
+          <div style="color:var(--mut); padding:7px 10px; font-size:10.5px; font-weight:600;">📈&nbsp; History</div>
+          <div style="margin-top:auto;" class="glasscard"><div style="padding:9px 10px;"><div style="font-size:8.5px; color:var(--mut); font-weight:700;">REST TIMER</div><div class="hero-num" style="font-size:17px; color:var(--blu);">0:47</div></div></div>
+        </div>
+        <!-- main -->
+        <div style="flex:1; padding:20px 22px; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div><div style="font-size:9px; color:var(--mut); font-weight:600;">THURSDAY, AUG 28</div>
+            <div style="font-size:19px; font-weight:800; letter-spacing:-0.03em;">Good evening 👋 <span style="font-size:10px; color:var(--grn); font-weight:700;">🔥 3 this week</span></div></div>
+            <button class="btn-start" style="padding:10px 22px; font-size:11.5px;">▶&nbsp;&nbsp;Start Workout</button>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1.4fr; gap:12px; margin-top:16px;">
+            <div class="glasscard" style="padding:14px; text-align:center;">
+              <div class="miniring" style="width:76px; height:76px; margin:0 auto; background:conic-gradient(var(--grn) 0 262deg, #1d2634 262deg 360deg); padding:7px;"><div style="width:100%; height:100%;"><div class="hero-num" style="font-size:15px;">1,840</div></div></div>
+              <div style="font-size:8.5px; color:var(--mut); margin-top:7px; font-weight:700;">CALORIES / 2,400</div>
+            </div>
+            <div class="glasscard" style="padding:14px; text-align:center;">
+              <div class="miniring" style="width:76px; height:76px; margin:0 auto; background:conic-gradient(var(--blu) 0 205deg, #1d2634 205deg 360deg); padding:7px;"><div style="width:100%; height:100%;"><div class="hero-num" style="font-size:15px;">102g</div></div></div>
+              <div style="font-size:8.5px; color:var(--mut); margin-top:7px; font-weight:700;">PROTEIN / 180g</div>
+            </div>
+            <div class="glasscard" style="padding:14px;">
+              <div style="font-size:9px; color:var(--mut); font-weight:700;">VOLUME · LAST 7 SESSIONS</div>
+              <div style="display:flex; align-items:flex-end; gap:6px; height:64px; margin-top:10px;">
+                <i style="flex:1; height:40%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:55%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:35%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:70%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:52%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:78%; background:rgba(111,164,255,0.35); border-radius:3px;"></i>
+                <i style="flex:1; height:100%; background:var(--grn); border-radius:3px; box-shadow:0 0 14px rgba(85,232,160,0.4);"></i>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:12px; margin-top:12px;">
+            <div class="glasscard" style="padding:14px;">
+              <div style="display:flex; justify-content:space-between;"><b style="font-size:12px;">Last workout — Push Day</b><span style="font-size:9px; color:var(--mut);">Aug 26 · 52 min</span></div>
+              <div style="margin-top:9px; font-size:10px; color:var(--mut); display:grid; grid-template-columns:1fr auto auto; gap:5px 14px;">
+                <span style="color:var(--tx); font-weight:600;">Chest Press <span style="font-size:8px; background:rgba(255,207,102,0.15); color:var(--amb); border-radius:5px; padding:1px 5px; font-weight:800;">PR</span></span><span>4 sets</span><span>160 lb × 8</span>
+                <span style="color:var(--tx); font-weight:600;">Shoulder Press</span><span>3 sets</span><span>90 lb × 10</span>
+                <span style="color:var(--tx); font-weight:600;">Cable Fly</span><span>3 sets</span><span>42.5 lb × 12</span>
+                <span style="color:var(--tx); font-weight:600;">Triceps Pushdown</span><span>3 sets</span><span>57.5 lb × 12</span>
+              </div>
+            </div>
+            <div class="glasscard" style="padding:14px;">
+              <div style="font-size:9px; color:var(--mut); font-weight:700;">THIS WEEK</div>
+              <div style="display:flex; gap:5px; margin-top:10px;">
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">M<div style="height:24px; border-radius:6px; background:rgba(85,232,160,0.25); border:1px solid rgba(85,232,160,0.5); margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">T<div style="height:24px; border-radius:6px; background:#161d29; margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">W<div style="height:24px; border-radius:6px; background:rgba(85,232,160,0.25); border:1px solid rgba(85,232,160,0.5); margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">T<div style="height:24px; border-radius:6px; background:rgba(85,232,160,0.25); border:1px solid rgba(85,232,160,0.5); margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">F<div style="height:24px; border-radius:6px; background:#161d29; margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">S<div style="height:24px; border-radius:6px; background:#161d29; margin-top:3px;"></div></div>
+                <div style="flex:1; text-align:center; font-size:8px; color:var(--mut);">S<div style="height:24px; border-radius:6px; background:#161d29; margin-top:3px;"></div></div>
+              </div>
+              <div style="font-size:9.5px; color:var(--mut); margin-top:10px;">Streak: <b style="color:var(--grn);">3 workouts</b> · Best week this month</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="framelabel">Desktop · Dashboard with sidebar</p>
+  </div>
+</div>
+
+<div class="card">
+  <b>Why pick Nightlift.</b>
+  <p class="muted" style="margin:6px 0 0; font-size:0.9rem;">Lowest-risk restyle — it modernizes what exists without changing the app's personality. Dark suits the actual use context (phone in a gym). The desktop dashboard falls out naturally: the sidebar replaces the tab bar, and Home cards become a grid. Trade-off: it's the least dramatic "redo" of the three; if you want the app to feel brand-new, look at Daybook or Ignite.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- ================= DESIGN 2 — DAYBOOK ======================= -->
+<!-- ============================================================ -->
+<h2 id="d2">Design 2 — <span style="color:#5da283">Daybook</span></h2>
+<p class="pill green">Reinvention</p><p class="pill">Light</p><p class="pill">Editorial / paper</p>
+<p class="lede">A complete personality change: a warm paper-toned light theme with serif display headings, hairline dividers instead of heavy cards, and one confident forest-green accent. Feels like a well-kept training journal — calm, legible in daylight, great for the food-logging half of the app. Desktop uses a centered reading column under a simple top nav.</p>
+<div class="swatches">
+  <div class="sw" style="background:#f5f2ea"><span>#f5f2ea paper</span></div>
+  <div class="sw" style="background:#fdfcf8"><span>card</span></div>
+  <div class="sw" style="background:#211d17"><span>#211d17 ink</span></div>
+  <div class="sw" style="background:#2e6b4f"><span>#2e6b4f green</span></div>
+  <div class="sw" style="background:#d96f32"><span>#d96f32 orange</span></div>
+</div>
+
+<div class="mockrow">
+  <!-- D2 MOBILE : workout logger -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr d2">
+      <div style="flex:1; overflow:hidden; padding:34px 16px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <div class="tag" style="color:var(--grn2);">‹ Push Day · 4 of 6</div>
+          <div style="font-size:9px; color:var(--mut2); font-variant-numeric:tabular-nums;">⏱ 32:14</div>
+        </div>
+        <div class="serif" style="font-size:22px; font-weight:700; margin-top:6px;">Chest Press</div>
+        <div style="font-size:9.5px; color:var(--mut2);">Life Fitness · Machine #12 · <span style="color:var(--org); font-weight:700;">▶ watch form video</span></div>
+        <div class="papercard" style="margin-top:12px; padding:12px 14px;">
+          <div style="display:grid; grid-template-columns:22px 1fr 1fr 30px; gap:8px; font-size:8px; color:var(--mut2); font-weight:700; letter-spacing:0.08em;"><span>SET</span><span>LBS</span><span>REPS</span><span></span></div>
+          <hr class="rule" style="margin:7px 0;">
+          <div style="display:grid; grid-template-columns:22px 1fr 1fr 30px; gap:8px; align-items:center; font-size:11px; padding:4px 0;">
+            <span style="color:var(--mut2);">1</span><b>155</b><b>10</b><span style="width:20px; height:20px; border-radius:50%; background:var(--grn2); color:#fff; display:grid; place-items:center; font-size:10px;">✓</span>
+          </div>
+          <div style="display:grid; grid-template-columns:22px 1fr 1fr 30px; gap:8px; align-items:center; font-size:11px; padding:4px 0; border-top:1px solid var(--line);">
+            <span style="color:var(--mut2);">2</span><b>160</b><b>8</b><span style="width:20px; height:20px; border-radius:50%; background:var(--grn2); color:#fff; display:grid; place-items:center; font-size:10px;">✓</span>
+          </div>
+          <div style="display:grid; grid-template-columns:22px 1fr 1fr 30px; gap:8px; align-items:center; font-size:11px; padding:4px 0; border-top:1px solid var(--line);">
+            <span style="color:var(--mut2);">3</span>
+            <span style="border:1px solid var(--line); border-radius:7px; padding:5px 8px; background:#fff; color:var(--mut2);">160 <i style="font-size:7.5px; font-style:normal;">prev 155</i></span>
+            <span style="border:1px solid var(--line); border-radius:7px; padding:5px 8px; background:#fff; color:var(--mut2);">8</span>
+            <span style="width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line);"></span>
+          </div>
+          <button class="btn2" style="width:100%; padding:9px; font-size:10.5px; margin-top:9px;">＋ Add set</button>
+        </div>
+        <div class="papercard" style="margin-top:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; border-left:3px solid var(--org);">
+          <div><div class="tag">Rest timer</div><div class="serif" style="font-size:18px; font-weight:700; color:var(--org);">1:12</div></div>
+          <span style="font-size:9.5px; font-weight:700; color:var(--mut2); border:1px solid var(--line); border-radius:8px; padding:5px 12px;">Skip</span>
+        </div>
+        <div class="tag" style="margin-top:12px;">Up next</div>
+        <div class="papercard" style="margin-top:5px; padding:9px 14px; font-size:10.5px; display:flex; justify-content:space-between;"><b>Shoulder Press</b><span style="color:var(--mut2);">3 × 10 · 90 lb</span></div>
+        <div class="papercard" style="margin-top:6px; padding:9px 14px; font-size:10.5px; display:flex; justify-content:space-between;"><b>Cable Fly</b><span style="color:var(--mut2);">3 × 12 · 42.5 lb</span></div>
+      </div>
+      <div style="display:flex; justify-content:space-around; padding:10px 0 18px; border-top:1px solid var(--line); background:var(--card); font-size:8px; color:var(--mut2); font-weight:700;">
+        <div style="text-align:center; opacity:0.7;"><div style="font-size:12px;">⌂</div>Home</div>
+        <div style="text-align:center; color:var(--grn2);"><div style="font-size:12px;">🏋</div>Workout</div>
+        <div style="text-align:center; opacity:0.7;"><div style="font-size:12px;">🍽</div>Food</div>
+        <div style="text-align:center; opacity:0.7;"><div style="font-size:12px;">📈</div>History</div>
+      </div>
+    </div></div>
+    <p class="framelabel">Mobile · Workout logger</p>
+  </div>
+
+  <!-- D2 DESKTOP : two-pane workout -->
+  <div class="mockcol grow">
+    <div class="browser">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — workout</span></div>
+      <div class="view d2">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 26px; border-bottom:1px solid var(--line); background:var(--card);">
+          <div class="serif" style="font-weight:700; font-size:14px;">Gym<span style="color:var(--grn2);">Tracker</span></div>
+          <div style="display:flex; gap:20px; font-size:10.5px; font-weight:600; color:var(--mut2);"><span>Home</span><span style="color:var(--ink); border-bottom:2px solid var(--grn2); padding-bottom:2px;">Workout</span><span>Food</span><span>History</span></div>
+          <div style="font-size:9.5px; color:var(--mut2); font-variant-numeric:tabular-nums;">Push Day · ⏱ 32:14</div>
+        </div>
+        <div style="display:flex; height:100%;">
+          <!-- exercise list pane -->
+          <div style="width:230px; border-right:1px solid var(--line); padding:16px; background:rgba(253,252,248,0.6);">
+            <div class="tag">Push Day — 6 exercises</div>
+            <div style="margin-top:10px; font-size:10.5px;">
+              <div style="padding:8px 10px; color:var(--mut2); display:flex; justify-content:space-between;"><span style="text-decoration:line-through;">Incline Press</span><span style="color:var(--grn2);">✓</span></div>
+              <div style="padding:8px 10px; color:var(--mut2); display:flex; justify-content:space-between;"><span style="text-decoration:line-through;">Pec Fly</span><span style="color:var(--grn2);">✓</span></div>
+              <div style="padding:8px 10px; color:var(--mut2); display:flex; justify-content:space-between;"><span style="text-decoration:line-through;">Lat Raise</span><span style="color:var(--grn2);">✓</span></div>
+              <div class="papercard" style="padding:8px 10px; font-weight:700; border-left:3px solid var(--grn2); display:flex; justify-content:space-between;"><span>Chest Press</span><span style="color:var(--mut2); font-weight:400;">2/3</span></div>
+              <div style="padding:8px 10px; display:flex; justify-content:space-between;"><span>Shoulder Press</span><span style="color:var(--mut2);">0/3</span></div>
+              <div style="padding:8px 10px; display:flex; justify-content:space-between;"><span>Cable Fly</span><span style="color:var(--mut2);">0/3</span></div>
+            </div>
+            <button class="btn2" style="width:100%; padding:9px; font-size:10px; margin-top:12px; background:var(--org);">📷 Scan machine QR</button>
+          </div>
+          <!-- logger pane -->
+          <div style="flex:1; padding:20px 26px;">
+            <div class="serif" style="font-size:22px; font-weight:700;">Chest Press</div>
+            <div style="font-size:9.5px; color:var(--mut2);">Life Fitness Insignia · last time <b style="color:var(--ink);">155 lb × 10</b> · best <b style="color:var(--ink);">160 lb × 8</b></div>
+            <div style="display:flex; gap:16px; margin-top:14px;">
+              <div class="papercard" style="flex:1.4; padding:14px 16px;">
+                <div style="display:grid; grid-template-columns:30px 1fr 1fr 1fr 34px; gap:10px; font-size:8px; color:var(--mut2); font-weight:700; letter-spacing:0.08em;"><span>SET</span><span>PREVIOUS</span><span>LBS</span><span>REPS</span><span></span></div>
+                <hr class="rule" style="margin:8px 0;">
+                <div style="display:grid; grid-template-columns:30px 1fr 1fr 1fr 34px; gap:10px; align-items:center; font-size:11px; padding:5px 0;"><span style="color:var(--mut2);">1</span><span style="color:var(--mut2); font-size:9.5px;">155 × 10</span><b>155</b><b>10</b><span style="width:20px; height:20px; border-radius:50%; background:var(--grn2); color:#fff; display:grid; place-items:center; font-size:10px;">✓</span></div>
+                <div style="display:grid; grid-template-columns:30px 1fr 1fr 1fr 34px; gap:10px; align-items:center; font-size:11px; padding:5px 0; border-top:1px solid var(--line);"><span style="color:var(--mut2);">2</span><span style="color:var(--mut2); font-size:9.5px;">155 × 9</span><b>160</b><b>8</b><span style="width:20px; height:20px; border-radius:50%; background:var(--grn2); color:#fff; display:grid; place-items:center; font-size:10px;">✓</span></div>
+                <div style="display:grid; grid-template-columns:30px 1fr 1fr 1fr 34px; gap:10px; align-items:center; font-size:11px; padding:5px 0; border-top:1px solid var(--line);"><span style="color:var(--mut2);">3</span><span style="color:var(--mut2); font-size:9.5px;">155 × 8</span><span style="border:1px solid var(--line); border-radius:7px; padding:4px 8px; background:#fff; color:var(--mut2);">160</span><span style="border:1px solid var(--line); border-radius:7px; padding:4px 8px; background:#fff; color:var(--mut2);">8</span><span style="width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line);"></span></div>
+              </div>
+              <div style="flex:1;">
+                <div class="papercard" style="padding:0; overflow:hidden;">
+                  <div style="aspect-ratio:16/9; background:linear-gradient(150deg,#d8d2c2,#c3bca9); display:grid; place-items:center;"><div style="width:34px; height:34px; border-radius:50%; background:rgba(33,29,23,0.75); color:#fff; display:grid; place-items:center; font-size:11px; padding-left:3px;">▶</div></div>
+                  <div style="padding:8px 12px; font-size:9px; color:var(--mut2);">How to: Chest Press — Life Fitness official</div>
+                </div>
+                <div class="papercard" style="margin-top:10px; padding:10px 14px; border-left:3px solid var(--org); display:flex; justify-content:space-between; align-items:center;">
+                  <div><div class="tag">Rest</div><div class="serif" style="font-size:17px; font-weight:700; color:var(--org);">1:12</div></div>
+                  <span style="font-size:9.5px; font-weight:700; color:var(--mut2); border:1px solid var(--line); border-radius:8px; padding:4px 12px;">Skip</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="framelabel">Desktop · Two-pane workout (list + logger + form video)</p>
+  </div>
+</div>
+
+<div class="card">
+  <b>Why pick Daybook.</b>
+  <p class="muted" style="margin:6px 0 0; font-size:0.9rem;">The most complete reinvention and the strongest desktop story — the two-pane workout view (exercise list on the left, logger and form video on the right) makes desktop genuinely better than mobile, not just wider. Light theme is more pleasant for food logging and reading history at home. Trade-off: light UIs are harsher on the eyes mid-workout in a dim gym; if you choose Daybook we should consider keeping a dark mode toggle (extra effort, noted in the plan).</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- ================= DESIGN 3 — IGNITE ======================== -->
+<!-- ============================================================ -->
+<h2 id="d3">Design 3 — <span style="color:#d8f34f">Ignite</span></h2>
+<p class="pill green">Statement</p><p class="pill">Dark</p><p class="pill">Bold athletic</p>
+<p class="lede">Nike-Training energy: pitch-black canvas, one electric lime accent, enormous uppercase numerals, and hairline rules instead of cards. Data is the decoration — your streak, volume, and PRs are typeset like a scoreboard. Desktop is an asymmetric grid with a giant "today" panel.</p>
+<div class="swatches">
+  <div class="sw" style="background:#0c0c0d"><span>#0c0c0d black</span></div>
+  <div class="sw" style="background:#1a1a1d"><span>surface</span></div>
+  <div class="sw" style="background:#d8f34f"><span>#d8f34f lime</span></div>
+  <div class="sw" style="background:#f4f4f2"><span>#f4f4f2 ink</span></div>
+  <div class="sw" style="background:#82827e"><span>muted</span></div>
+</div>
+
+<div class="mockrow">
+  <!-- D3 MOBILE -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr d3">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div style="display:flex; justify-content:space-between; font-size:8.5px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;"><span>THU 08.28</span><span style="color:var(--lime);">WEEK STREAK 03</span></div>
+        <div class="cond" style="font-size:34px; margin-top:10px;">Evening,<br><span style="color:var(--lime);">Zuriel.</span></div>
+        <div class="hl" style="margin-top:14px; padding-top:10px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span style="font-size:8.5px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;">CALORIES</span>
+          <span class="huge" style="font-size:26px;">1,840<span style="font-size:11px; color:var(--mut3); font-weight:600;"> /2,400</span></span>
+        </div>
+        <div style="height:3px; background:#1e1e21; margin-top:6px;"><div style="width:76%; height:100%; background:var(--lime);"></div></div>
+        <div class="hl" style="margin-top:12px; padding-top:10px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span style="font-size:8.5px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;">PROTEIN</span>
+          <span class="huge" style="font-size:26px;">102<span style="font-size:11px; color:var(--mut3); font-weight:600;"> /180 G</span></span>
+        </div>
+        <div style="height:3px; background:#1e1e21; margin-top:6px;"><div style="width:57%; height:100%; background:#f4f4f2;"></div></div>
+        <div class="hl" style="margin-top:14px; padding-top:12px;">
+          <div style="font-size:8.5px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;">LAST SESSION · 08.26</div>
+          <div style="display:flex; gap:18px; margin-top:8px;">
+            <div><div class="huge" style="font-size:21px;">18</div><div style="font-size:7.5px; color:var(--mut3); font-weight:700; letter-spacing:0.08em;">SETS</div></div>
+            <div><div class="huge" style="font-size:21px;">12.4K</div><div style="font-size:7.5px; color:var(--mut3); font-weight:700; letter-spacing:0.08em;">LB VOL</div></div>
+            <div><div class="huge" style="font-size:21px;">52</div><div style="font-size:7.5px; color:var(--mut3); font-weight:700; letter-spacing:0.08em;">MIN</div></div>
+            <div><div class="huge" style="font-size:21px; color:var(--lime);">1</div><div style="font-size:7.5px; color:var(--lime); font-weight:700; letter-spacing:0.08em;">PR ★</div></div>
+          </div>
+        </div>
+        <button class="limebtn" style="width:100%; padding:15px; font-size:13px; margin-top:18px;">Start Workout →</button>
+        <div style="text-align:center; font-size:8.5px; color:var(--mut3); font-weight:700; letter-spacing:0.1em; margin-top:9px;">PUSH DAY IS UP NEXT</div>
+      </div>
+      <div style="display:flex; justify-content:space-around; align-items:center; padding:10px 0 18px; border-top:1px solid var(--line3); background:var(--bg3); font-size:7.5px; font-weight:800; letter-spacing:0.08em; color:var(--mut3);">
+        <span style="color:var(--lime);">HOME</span><span>TRAIN</span>
+        <span style="width:38px; height:38px; background:var(--lime); color:#101204; display:grid; place-items:center; font-size:13px; margin-top:-16px; border-radius:2px;">▣</span>
+        <span>FUEL</span><span>STATS</span>
+      </div>
+    </div></div>
+    <p class="framelabel">Mobile · Home (center QR-scan key)</p>
+  </div>
+
+  <!-- D3 DESKTOP -->
+  <div class="mockcol grow">
+    <div class="browser">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — stats</span></div>
+      <div class="view d3">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--line3);">
+          <div class="cond" style="font-size:15px;">GYM<span style="color:var(--lime);">TRKR</span></div>
+          <div style="display:flex; gap:22px; font-size:9px; font-weight:800; letter-spacing:0.1em; color:var(--mut3);"><span style="color:var(--ink3); border-bottom:2px solid var(--lime); padding-bottom:3px;">HOME</span><span>TRAIN</span><span>FUEL</span><span>STATS</span></div>
+          <span class="limebtn" style="padding:8px 18px; font-size:9.5px;">START WORKOUT →</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr; height:100%;">
+          <div style="border-right:1px solid var(--line3); padding:22px 24px;">
+            <div style="font-size:8.5px; color:var(--mut3); font-weight:800; letter-spacing:0.12em;">THURSDAY 08.28</div>
+            <div class="cond" style="font-size:38px; margin-top:8px;">Evening,<br><span style="color:var(--lime);">Zuriel.</span></div>
+            <div class="huge outline" style="font-size:64px; margin-top:16px;">03</div>
+            <div style="font-size:8.5px; color:var(--mut3); font-weight:800; letter-spacing:0.12em; margin-top:2px;">WORKOUTS THIS WEEK — BEST THIS MONTH</div>
+            <div style="display:flex; gap:4px; margin-top:14px;">
+              <div style="flex:1; height:30px; background:var(--lime);"></div>
+              <div style="flex:1; height:30px; background:#1e1e21;"></div>
+              <div style="flex:1; height:30px; background:var(--lime);"></div>
+              <div style="flex:1; height:30px; background:var(--lime);"></div>
+              <div style="flex:1; height:30px; background:#1e1e21;"></div>
+              <div style="flex:1; height:30px; background:#1e1e21;"></div>
+              <div style="flex:1; height:30px; background:#1e1e21;"></div>
+            </div>
+          </div>
+          <div style="border-right:1px solid var(--line3); padding:22px 20px;">
+            <div style="font-size:8.5px; color:var(--mut3); font-weight:800; letter-spacing:0.12em;">FUEL TODAY</div>
+            <div class="huge" style="font-size:34px; margin-top:12px;">1,840</div>
+            <div style="font-size:8px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;">KCAL / 2,400</div>
+            <div style="height:4px; background:#1e1e21; margin-top:8px;"><div style="width:76%; height:100%; background:var(--lime);"></div></div>
+            <div class="huge" style="font-size:34px; margin-top:20px;">102<span style="font-size:14px; color:var(--mut3);">G</span></div>
+            <div style="font-size:8px; color:var(--mut3); font-weight:700; letter-spacing:0.1em;">PROTEIN / 180 G</div>
+            <div style="height:4px; background:#1e1e21; margin-top:8px;"><div style="width:57%; height:100%; background:var(--ink3);"></div></div>
+            <div class="hl" style="margin-top:18px; padding-top:12px; font-size:9.5px; color:var(--mut3);">
+              <div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--ink3); font-weight:600;">Chicken bowl</span><span>640 · 52g</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--ink3); font-weight:600;">Protein shake</span><span>220 · 40g</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0;"><span style="color:var(--ink3); font-weight:600;">Oats + banana</span><span>410 · 10g</span></div>
+            </div>
+          </div>
+          <div style="padding:22px 20px;">
+            <div style="font-size:8.5px; color:var(--mut3); font-weight:800; letter-spacing:0.12em;">LAST SESSION</div>
+            <div class="cond" style="font-size:17px; margin-top:10px;">Push Day</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 10px; margin-top:14px;">
+              <div><div class="huge" style="font-size:24px;">18</div><div style="font-size:7.5px; color:var(--mut3); font-weight:800; letter-spacing:0.1em;">SETS</div></div>
+              <div><div class="huge" style="font-size:24px;">12.4K</div><div style="font-size:7.5px; color:var(--mut3); font-weight:800; letter-spacing:0.1em;">LB VOLUME</div></div>
+              <div><div class="huge" style="font-size:24px;">52</div><div style="font-size:7.5px; color:var(--mut3); font-weight:800; letter-spacing:0.1em;">MINUTES</div></div>
+              <div><div class="huge" style="font-size:24px; color:var(--lime);">1★</div><div style="font-size:7.5px; color:var(--lime); font-weight:800; letter-spacing:0.1em;">NEW PR</div></div>
+            </div>
+            <div class="hl" style="margin-top:16px; padding-top:10px; font-size:9px; color:var(--mut3);">
+              <div style="padding:3px 0;"><b style="color:var(--ink3);">CHEST PRESS</b> — 160 LB × 8 <span style="color:var(--lime); font-weight:800;">PR</span></div>
+              <div style="padding:3px 0;"><b style="color:var(--ink3);">SHOULDER PRESS</b> — 90 LB × 10</div>
+              <div style="padding:3px 0;"><b style="color:var(--ink3);">CABLE FLY</b> — 42.5 LB × 12</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="framelabel">Desktop · Scoreboard grid</p>
+  </div>
+</div>
+
+<div class="card">
+  <b>Why pick Ignite.</b>
+  <p class="muted" style="margin:6px 0 0; font-size:0.9rem;">Maximum personality and motivation — the app feels like gear, not a form. Big numerals are extremely glanceable mid-set, and the flat, borderless style is actually the simplest CSS of the three. Trade-off: bold typography is unforgiving — spacing and hierarchy must be exact or it looks broken, and the aesthetic can fight dense screens like Routines editing. Needs a proper condensed display font (e.g. Archivo Expanded/Anton via one self-hosted woff2) to land.</p>
+</div>
+
+<!-- ================= COMPARISON ================= -->
+<h2 id="compare">Side-by-side</h2>
+<table>
+  <tr><th></th><th>1 · Nightlift</th><th>2 · Daybook</th><th>3 · Ignite</th></tr>
+  <tr><td><b>Theme</b></td><td>Dark, glass + glow</td><td>Warm light, editorial</td><td>Black + electric lime</td></tr>
+  <tr><td><b>Personality shift</b></td><td>Refinement of today</td><td>Complete change</td><td>Complete change</td></tr>
+  <tr><td><b>Desktop shell</b></td><td>Icon sidebar + card grid</td><td>Top nav + two-pane work views</td><td>Top nav + asymmetric scoreboard grid</td></tr>
+  <tr><td><b>Best at</b></td><td>Familiarity, gym-floor readability</td><td>Food/history reading, desktop productivity</td><td>Motivation, glanceability mid-set</td></tr>
+  <tr><td><b>Main risk</b></td><td>Least "new" feeling</td><td>Light theme in a dim gym</td><td>Typography must be perfect; dense screens</td></tr>
+  <tr><td><b>New font needed</b></td><td>No (Inter)</td><td>No (Georgia + Inter)</td><td>Yes (1 condensed woff2)</td></tr>
+  <tr><td><b>Relative effort</b></td><td>~1.0×</td><td>~1.3× (2-pane views, maybe dark toggle)</td><td>~1.2× (type system, custom nav)</td></tr>
+</table>
+
+<!-- ================= IMPLEMENTATION PLAN ================= -->
+<h2 id="plan">Implementation plan</h2>
+<p class="lede">The same 5 phases apply to whichever design wins — only Phase 2/3 content differs. Everything below <code>src/data/</code> and <code>src/types.ts</code> stays frozen; the redo touches <code>styles.css</code>, <code>App.tsx</code>, <code>components/</code>, and <code>screens/</code>.</p>
+
+<div class="timeline">
+  <div class="tl-item">
+    <div class="tl-meta">Phase A · Foundations</div>
+    <h3>Design tokens + responsive shell</h3>
+    <ul>
+      <li>Replace the ad-hoc <code>:root</code> vars with a full token sheet (color, space, radius, type scale) in a new <code>src/theme.css</code> — the chosen design is expressed entirely as tokens so future reskins are cheap.</li>
+      <li>Rebuild the shell: <b>&lt;768px</b> keeps the phone column + bottom tab bar; <b>≥768px</b> switches to the design's desktop chrome (sidebar or top nav) with a fluid content area — this kills the current hard 460px cap.</li>
+      <li>Screen switcher stays (no router dependency needed), but the shell exposes a <code>wide</code> flag so screens can render multi-pane desktop variants.</li>
+    </ul>
+  </div>
+  <div class="tl-item">
+    <div class="tl-meta">Phase B · Component kit</div>
+    <h3>Rebuild the 12-piece component library</h3>
+    <ul>
+      <li>Buttons (primary/ghost/icon), Card, Chip, Field/Input, Ring, ProgressBar, SetRow grid, TabBar/SideNav, RestToast, FAB/ScanKey, CalendarStrip, Sparkline — restyled to the chosen direction, same props as today so screens swap cleanly.</li>
+      <li>Ignite only: wire the condensed display font (single self-hosted woff2, <code>font-display: swap</code>).</li>
+    </ul>
+  </div>
+  <div class="tl-item">
+    <div class="tl-meta">Phase C · Screens, mobile-first</div>
+    <h3>Migrate all 8 screens</h3>
+    <ul>
+      <li>Order: <b>Home → Workout → Routines → Food → History → Summary → Scan → Machine</b> (highest-traffic first; Scan/Machine last since the viewfinder styling is self-contained).</li>
+      <li>Each screen lands in its own commit so any regression bisects to one screen.</li>
+    </ul>
+  </div>
+  <div class="tl-item">
+    <div class="tl-meta">Phase D · Desktop layouts</div>
+    <h3>Make wide screens genuinely better, not just wider</h3>
+    <ul>
+      <li><b>Home:</b> dashboard grid (rings + volume chart + last workout + week strip together).</li>
+      <li><b>Workout:</b> two-pane — exercise list left, active logger + form video right (Daybook mock above shows the pattern; all three designs get it).</li>
+      <li><b>History:</b> calendar/sparkline left, selected-session detail right.</li>
+      <li><b>Food:</b> day log left, quick-add + saved meals right.</li>
+    </ul>
+  </div>
+  <div class="tl-item">
+    <div class="tl-meta">Phase E · Polish + verification</div>
+    <h3>Motion, edge cases, and the existing test gates</h3>
+    <ul>
+      <li>Screen transitions, ring/ bar animations, rest-toast entrance; reduced-motion respected.</li>
+      <li>Empty states (no workouts yet, empty food day), long routine names, 44px touch targets, safe-area insets re-checked.</li>
+      <li>Gates: <code>npm run typecheck</code>, <code>npm run build</code>, and the existing <code>npm run e2e</code> flow must pass unchanged — it exercises the full log-a-workout path, so it doubles as the refactor safety net. Manual pass on a real phone via the LAN dev URL.</li>
+    </ul>
+  </div>
+</div>
+
+<p class="muted" style="font-size:0.85rem;">Sequencing note: A → B → C are strictly ordered; D can start per-screen as each screen clears C; E is continuous but has a final dedicated pass.</p>
+
+<!-- ================= Q&A ================= -->
+<h2 id="qa">Q&amp;A — what I need from you</h2>
+
+<div class="card qa">
+  <h3>1. Which direction do we build?</h3>
+  <p style="margin:0; font-size:0.92rem;"><b>Nightlift</b> (refined dark) · <b>Daybook</b> (light editorial) · <b>Ignite</b> (bold athletic) — or a mix (e.g. "Ignite's typography on Nightlift's palette").</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> everything in Phases B–D is styled to one direction; picking after work starts means redoing the component kit. Mixing is fine but tell me which design is the <i>base</i>. The mockups above are the decision artifact — look at each pair on your phone and monitor.</p>
+</div>
+
+<div class="card qa">
+  <h3>2. If Daybook: do you need a dark mode too?</h3>
+  <p style="margin:0; font-size:0.92rem;">Daybook is light-first. A companion dark theme is ~1 extra day since Phase A tokenizes all color, but it's still extra surface to test.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> you use this <i>in the gym</i>, often in dim light, phone at max brightness between sets. If you train in a bright LA Fitness this is a non-issue; if not, light-only could be a daily annoyance. Nightlift/Ignite make this question moot.</p>
+</div>
+
+<div class="card qa">
+  <h3>3. How much do you actually use desktop?</h3>
+  <p style="margin:0; font-size:0.92rem;"><b>(a)</b> Rarely — just make it not-embarrassing (keep centered column, nicer chrome) · <b>(b)</b> Sometimes — full Phase D as planned · <b>(c)</b> Often — Phase D first-class, consider keyboard shortcuts for set entry.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> Phase D (multi-pane desktop layouts) is roughly a third of the total effort. The app is offline/IndexedDB per-device with no sync (Phase 3 of the product roadmap isn't built), so desktop currently shows <i>different data</i> than your phone — worth confirming desktop investment is wanted before sync exists.</p>
+</div>
+
+<div class="card qa">
+  <h3>4. Keep the 4-tab structure (Home / Workout / Food / History)?</h3>
+  <p style="margin:0; font-size:0.92rem;">All three mocks keep today's information architecture — this is a reskin+responsive redo, not a nav redesign. Ignite's mobile mock adds one change: the QR scan gets a permanent center slot in the tab bar instead of a floating button.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> "redo the whole UI" could mean visuals (assumed here) or also flows. If you want flow changes — e.g. merging Food into Home, or scan-first navigation — that's a scope add I'd fold into Phase C per screen.</p>
+</div>
+
+<p class="muted" style="margin-top:40px; font-size:0.8rem;">Plan(gy) · Gym Tracker UI redesign · generated 2026-08-28 · data layer untouched, UI-only rebuild</p>
+
+</div>
+</body>
+</html>

@@ -113,7 +113,9 @@ export function ScanScreen() {
                 {found.res.machine?.nickname ??
                   (found.res.model
                     ? `${found.res.model.manufacturer} — ${found.res.model.modelName}`
-                    : 'New machine')}
+                    : /lfconnect\.com|lifefitness\.com/.test(found.url)
+                      ? 'Life Fitness machine'
+                      : 'New machine')}
               </b>
               <span className="small" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {found.url}

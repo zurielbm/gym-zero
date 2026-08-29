@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
-import { youTubeId, youTubeThumb } from '../lib/youtube'
+import { VideoPlayer } from '../components/VideoPlayer'
 import type { EquipmentModel, GymMachine, PrevPerformance } from '../types'
 
 interface Props {
@@ -53,7 +53,6 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   if (!loaded) return null
 
   const videoUrl = model?.videoUrl ?? machine?.qrUrl ?? qrUrl
-  const vid = youTubeId(videoUrl)
 
   // ----- not mapped yet: name it once -----
   if (!machine) {
@@ -74,19 +73,17 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       <>
         <button className="back-link" onClick={() => go({ name: 'scan' })}>‹ Scanner</button>
         <h1 className="p-h1" style={{ fontSize: '1.25rem' }}>
-          {model ? `${model.manufacturer} ${model.modelName}` : 'New machine'}
+          {model
+            ? `${model.manufacturer} ${model.modelName}`
+            : qrUrl && /lfconnect\.com|lifefitness\.com/.test(qrUrl)
+              ? 'Life Fitness machine'
+              : 'New machine'}
         </h1>
         <p className="p-sub">
           {model ? 'Recognized from the catalog — save it as your machine.' : 'Unknown QR code — map it once and it sticks.'}
         </p>
 
-        {vid && (
-          <a className="video-thumb" href={videoUrl} target="_blank" rel="noopener noreferrer">
-            <img src={youTubeThumb(vid)} alt="Instruction video" />
-            <div className="play-badge" />
-            <div className="video-meta">▶ Official instruction video</div>
-          </a>
-        )}
+        <VideoPlayer url={videoUrl} />
 
         <div className="card">
           <div className="field">
@@ -144,17 +141,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
         {model ? `${model.manufacturer} · ${model.modelName}` : ex?.name ?? ''}
       </p>
 
-      {vid ? (
-        <a className="video-thumb" href={videoUrl} target="_blank" rel="noopener noreferrer">
-          <img src={youTubeThumb(vid)} alt="Instruction video" />
-          <div className="play-badge" />
-          <div className="video-meta">▶ Official instruction video</div>
-        </a>
-      ) : videoUrl ? (
-        <a className="video-thumb" href={videoUrl} target="_blank" rel="noopener noreferrer">
-          <div className="placeholder">▶ Open instruction link</div>
-        </a>
-      ) : null}
+      <VideoPlayer url={videoUrl} />
 
       <div style={{ marginBottom: 10 }}>
         {ex?.muscleGroups.map((m) => (

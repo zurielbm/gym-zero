@@ -103,6 +103,28 @@ await step('rescan resolves to MY machine now', async () => {
   await page.getByText('‹ Scanner').click()
 })
 
+await step('life fitness qrredirect url -> video + map machine', async () => {
+  // real-world URL shape: sticker redirects to trainer.lifefitness.com with the
+  // YouTube id in url-video and the lfconnect sticker url base64d in referer-link
+  await page.locator('.text-in').fill('https://trainer.lifefitness.com/qrredirect?referer-link=aHR0cHM6Ly9sZmNvbm5lY3QuY29tL3E/dD1zJm09c3NwZA==&referer-type=STRENGTH&url-video=ZbVNPTyVNTQ')
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Life Fitness machine').waitFor()
+  await page.locator('.video-thumb img').waitFor() // thumbnail from url-video id
+  await page.locator('input.text-in').first().fill('Pulldown by the mirrors')
+  await page.locator('select.text-in').selectOption({ label: 'Lat Pulldown' })
+  await page.getByText('Save my machine').click()
+  await page.getByText('My setup').waitFor()
+})
+
+await step('sticker lfconnect url resolves to the same machine', async () => {
+  await page.getByText('‹ Scanner').click()
+  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=sspd')
+  await page.getByText('Go', { exact: true }).click() // manual entry goes straight to the machine
+  await page.locator('h1', { hasText: 'Pulldown by the mirrors' }).waitFor()
+  await page.getByText('My setup').waitFor()
+  await page.getByText('‹ Scanner').click()
+})
+
 await step('finish workout -> summary with volume', async () => {
   await page.getByText('‹ Back').click() // scan screen back -> active workout
   await page.getByText('Finish workout').waitFor()

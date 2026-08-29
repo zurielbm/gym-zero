@@ -10,6 +10,11 @@ export function youTubeId(url: string | undefined): string | null {
       const m = u.pathname.match(/^\/(shorts|embed|v)\/([\w-]+)/)
       if (m) return m[2]
     }
+    // Life Fitness QR redirect pages carry the video id directly:
+    // trainer.lifefitness.com/qrredirect?...&url-video=<yt id>
+    if (host === 'trainer.lifefitness.com' && u.pathname.startsWith('/qrredirect')) {
+      return u.searchParams.get('url-video')
+    }
     return null
   } catch {
     return null
