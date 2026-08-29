@@ -101,6 +101,9 @@ export interface SavedMeal {
   fat?: number
 }
 
+export type ExperienceLevel = 'new' | 'returning' | 'experienced'
+export type TrainingGoal = 'muscle' | 'recomp' | 'fat-loss' | 'strength' | 'general'
+
 export interface Settings {
   calorieTarget: number
   proteinTarget: number
@@ -111,6 +114,56 @@ export interface Settings {
   /** entered once; lets quick weigh-ins auto-compute BMI */
   heightIn?: number
   bodyFatGoalPct?: number
+  /** CLIProxyAPI base URL (tailnet HTTPS); AI features are off when unset */
+  aiEndpoint?: string
+  aiApiKey?: string
+  aiModel?: string
+  // ---- training profile (feeds AI starter programs; all optional) ----
+  experience?: ExperienceLevel
+  goal?: TrainingGoal
+  daysPerWeek?: number
+  sessionMinutes?: number
+  birthYear?: number
+  sex?: 'male' | 'female'
+  /** injuries or things to work around, free text (e.g. "lower back pain") */
+  limitations?: string
+}
+
+/** AI-generated starter program for one machine; cached until recalculated. */
+export interface AiProgram {
+  /** machine id */
+  id: string
+  exerciseId: string
+  sets: number
+  reps: number
+  /** rough guess — machine stacks vary; always shown with the effort check */
+  startWeightLb?: number
+  /** plain-words check for whether the weight is right */
+  effortCheck: string
+  restSeconds: number
+  /** when/how to add weight, in plain words */
+  progression: string
+  warmup?: string
+  /** safety note derived from the user's limitations */
+  cautions?: string
+  createdAt: number
+}
+
+/** Cached AI identification of a machine QR code; asked once per sticker. */
+export interface MachineAiInfo {
+  /** normalized QR key (see normalizeQrUrl) — stable across devices */
+  id: string
+  qrUrl: string
+  identified: boolean
+  manufacturer?: string
+  modelName?: string
+  confidence: 'high' | 'medium' | 'low'
+  muscleGroups: MuscleGroup[]
+  /** best match from the app's exercise catalog */
+  exerciseId?: string
+  setupTips?: string
+  howTo: string[]
+  createdAt: number
 }
 
 /** One body-composition reading (e.g. a smart-scale weigh-in). All metrics optional. */
@@ -199,6 +252,10 @@ export interface DataAPI {
   saveMachine(m: GymMachine): Promise<void>
   resolveQr(url: string): Promise<QrResolution>
   getEquipmentModel(id: string): Promise<EquipmentModel | undefined>
+  getMachineAiInfo(qrUrl: string): Promise<MachineAiInfo | undefined>
+  saveMachineAiInfo(info: MachineAiInfo): Promise<void>
+  getAiProgram(machineId: string): Promise<AiProgram | undefined>
+  saveAiProgram(program: AiProgram): Promise<void>
 
   // routines
   listRoutines(): Promise<Routine[]>

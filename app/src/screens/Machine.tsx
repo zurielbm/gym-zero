@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
+import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
-import type { EquipmentModel, GymMachine, PrevPerformance } from '../types'
+import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
+import type { AiProgram, EquipmentModel, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, TrainingGoal } from '../types'
 
 interface Props {
   machineId?: string
@@ -12,7 +14,7 @@ interface Props {
 }
 
 export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
-  const { api, go, activeWorkout, setActiveWorkout, exercises } = useApp()
+  const { api, go, activeWorkout, setActiveWorkout, exercises, settings, refreshSettings } = useApp()
   const [machine, setMachine] = useState<GymMachine | null>(null)
   const [model, setModel] = useState<EquipmentModel | null>(null)
   const [perf, setPerf] = useState<PrevPerformance | undefined>()
@@ -20,6 +22,17 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   // map-new-machine form
   const [nickname, setNickname] = useState('')
   const [exerciseId, setExerciseId] = useState('')
+  const aiAvail = useAiAvailable(settings)
+  const [aiInfo, setAiInfo] = useState<MachineAiInfo | null>(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  // starter program
+  const [program, setProgram] = useState<AiProgram | null>(null)
+  const [progBusy, setProgBusy] = useState(false)
+  const [progError, setProgError] = useState<string | null>(null)
+  // one-time inline profile prompt (defaults tuned for a new lifter)
+  const [quickExp, setQuickExp] = useState<ExperienceLevel>('new')
+  const [quickGoal, setQuickGoal] = useState<TrainingGoal>('recomp')
 
   useEffect(() => {
     let alive = true
@@ -32,12 +45,23 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       } else if (modelId) {
         mo = await api.getEquipmentModel(modelId)
       }
+      const scannedUrl = qrUrl ?? m?.qrUrl
+      const [cached, cachedProgram] = await Promise.all([
+        scannedUrl ? api.getMachineAiInfo(scannedUrl) : undefined,
+        m ? api.getAiProgram(m.id) : undefined,
+      ])
       if (!alive) return
       setMachine(m ?? null)
       setModel(mo ?? null)
+      setAiInfo(cached ?? null)
+      setProgram(cachedProgram ?? null)
       if (mo && !m) {
         setNickname(mo.modelName)
         setExerciseId(mo.exerciseIds[0] ?? '')
+      } else if (!mo && !m && cached) {
+        const name = [cached.manufacturer, cached.modelName].filter(Boolean).join(' ')
+        if (name) setNickname((cur) => cur || name)
+        if (cached.exerciseId) setExerciseId((cur) => cur || cached.exerciseId!)
       }
       setLoaded(true)
     }
@@ -54,6 +78,71 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
 
   const videoUrl = model?.videoUrl ?? machine?.qrUrl ?? qrUrl
 
+  const askAi = async () => {
+    const config = aiConfig(settings)
+    if (!config || !qrUrl || aiBusy) return
+    setAiBusy(true)
+    setAiError(null)
+    try {
+      const info = await fetchMachineInfo(config, qrUrl, [...exercises.values()])
+      await api.saveMachineAiInfo(info)
+      setAiInfo(info)
+      const name = [info.manufacturer, info.modelName].filter(Boolean).join(' ')
+      if (name) setNickname((cur) => cur || name)
+      if (info.exerciseId) setExerciseId((cur) => cur || info.exerciseId!)
+      if (!info.identified) setAiError("AI couldn't identify this machine — map it manually below.")
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  const generateProgram = async (m: GymMachine, override?: Partial<Settings>) => {
+    const config = aiConfig(settings)
+    const exercise = exercises.get(m.exerciseId)
+    if (!config || !exercise) return
+    setProgBusy(true)
+    setProgError(null)
+    try {
+      const prog = await recommendProgram(config, {
+        machine: m, exercise, machineAi: aiInfo,
+        settings: { ...settings, ...override }, prev: perf,
+      })
+      await api.saveAiProgram(prog)
+      setProgram(prog)
+    } catch (err) {
+      setProgError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setProgBusy(false)
+    }
+  }
+
+  const hasProfile = !!settings.experience || !!settings.goal
+
+  const quickSetupAndGenerate = async (m: GymMachine) => {
+    await api.saveSettings({ ...settings, experience: quickExp, goal: quickGoal })
+    await refreshSettings()
+    await generateProgram(m, { experience: quickExp, goal: quickGoal })
+  }
+
+  const aiGuide = aiInfo && (aiInfo.setupTips || aiInfo.howTo.length > 0) ? (
+    <div className="card">
+      <div className="row">
+        <span className="lab lm">✦ AI guide</span>
+        <span className="lab">
+          {aiInfo.confidence === 'high' ? 'Confidence high' : aiInfo.confidence === 'medium' ? 'Best guess' : 'Low confidence'}
+        </span>
+      </div>
+      {aiInfo.setupTips && <span className="small" style={{ display: 'block', marginTop: 6 }}>{aiInfo.setupTips}</span>}
+      {aiInfo.howTo.length > 0 && (
+        <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          {aiInfo.howTo.map((cue, i) => <li key={i}>{cue}</li>)}
+        </ul>
+      )}
+    </div>
+  ) : null
+
   // ----- not mapped yet: name it once -----
   if (!machine) {
     const createMachine = async () => {
@@ -68,6 +157,9 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       }
       await api.saveMachine(m)
       setMachine(m)
+      // profile already known → build the starter program right away; otherwise
+      // the mapped view shows the one-time quick-setup prompt first
+      if (aiAvail.available && hasProfile) void generateProgram(m)
     }
     return (
       <div className="page">
@@ -84,6 +176,22 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
         </p>
 
         <VideoPlayer url={videoUrl} />
+
+        {aiGuide}
+        {!model && qrUrl && !aiInfo && (
+          <>
+            <button className="ghost-btn" disabled={!aiAvail.available || aiBusy} onClick={() => void askAi()}>
+              {aiBusy ? '✦ Asking AI…' : '✦ Ask AI what this is'}
+            </button>
+            {!aiAvail.available && (
+              <span className="small" style={{ display: 'block', margin: '6px 0 0' }}>
+                {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+              </span>
+            )}
+            <div style={{ height: 10 }} />
+          </>
+        )}
+        {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginBottom: 8 }}>{aiError}</span>}
 
         <div className="card">
           <div className="field">
@@ -149,6 +257,80 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
         ))}
         {ex && <span className="chip blue" style={{ textTransform: 'capitalize' }}>{ex.equipment}</span>}
       </div>
+
+      {aiGuide}
+
+      {program ? (
+        <div className="card">
+          <div className="row">
+            <span className="lab lm">✦ Your starter program</span>
+            {aiAvail.available && (
+              <button
+                className="ghost-btn" style={{ width: 'auto', padding: '6px 12px', fontSize: '0.7rem' }}
+                disabled={progBusy} onClick={() => void generateProgram(machine)}
+              >
+                {progBusy ? 'Recalculating…' : '↻ Recalculate'}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 22, margin: '10px 0 8px' }}>
+            <span>
+              <span className="num" style={{ fontSize: '1.4rem', display: 'block' }}>{program.sets}×{program.reps}</span>
+              <span className="lab">Sets × reps</span>
+            </span>
+            {program.startWeightLb != null && (
+              <span>
+                <span className="num" style={{ fontSize: '1.4rem', display: 'block' }}>~{program.startWeightLb}</span>
+                <span className="lab">Start lb · guess</span>
+              </span>
+            )}
+            <span>
+              <span className="num" style={{ fontSize: '1.4rem', display: 'block' }}>{program.restSeconds}s</span>
+              <span className="lab">Rest</span>
+            </span>
+          </div>
+          <span className="small" style={{ display: 'block' }}>{program.effortCheck} <b>{program.progression}</b></span>
+          {program.warmup && <span className="small" style={{ display: 'block', marginTop: 4 }}>Warm-up: {program.warmup}</span>}
+          {program.cautions && <span className="small" style={{ display: 'block', marginTop: 4, color: 'var(--danger)' }}>⚑ {program.cautions}</span>}
+        </div>
+      ) : !hasProfile && aiAvail.available ? (
+        <div className="card">
+          <span className="lab lm">✦ Quick setup — sizes your program</span>
+          <span className="small" style={{ display: 'block', margin: '6px 0 2px' }}>How much have you trained before?</span>
+          <Seg
+            options={[{ v: 'new', label: "I'm new" }, { v: 'returning', label: 'Some' }, { v: 'experienced', label: 'A lot' }]}
+            value={quickExp} onPick={setQuickExp}
+          />
+          <span className="small" style={{ display: 'block', margin: '2px 0 2px' }}>Main goal?</span>
+          <Seg
+            options={[
+              { v: 'recomp', label: 'Muscle + abs' }, { v: 'muscle', label: 'Muscle' },
+              { v: 'fat-loss', label: 'Fat loss' }, { v: 'strength', label: 'Strength' },
+            ]}
+            value={quickGoal} onPick={setQuickGoal}
+          />
+          <button className="big-btn" disabled={progBusy} onClick={() => void quickSetupAndGenerate(machine)}>
+            {progBusy ? 'Building your program…' : 'Get my program →'}
+          </button>
+          <div style={{ height: 8 }} />
+          <button className="ghost-btn" disabled={progBusy} onClick={() => void generateProgram(machine)}>
+            Skip — use safe defaults
+          </button>
+        </div>
+      ) : (
+        <>
+          <button className="ghost-btn" disabled={!aiAvail.available || progBusy} onClick={() => void generateProgram(machine)}>
+            {progBusy ? '✦ Building your program…' : '✦ Get my starter program'}
+          </button>
+          {!aiAvail.available && (
+            <span className="small" style={{ display: 'block', margin: '6px 0 0' }}>
+              {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+            </span>
+          )}
+          <div style={{ height: 10 }} />
+        </>
+      )}
+      {progError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginBottom: 8 }}>{progError}</span>}
 
       <div className="card">
         <b style={{ fontSize: '0.85rem' }}>My setup</b>

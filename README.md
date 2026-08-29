@@ -21,6 +21,37 @@ npm run dev -- --port 5199   # in one terminal…
 npm run e2e                  # …e2e flow test in another (needs playwright chromium cache)
 ```
 
+## AI assist (CLIProxyAPI)
+
+Optional: describe food in plain words to log calories/macros, and identify
+unknown machine QR codes (model, muscle groups, setup + form cues), powered by
+a self-hosted [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+(OpenAI-compatible) endpoint. The phone calls the proxy **directly**, so AI
+works only while the device can reach it (e.g. on the Tailscale tailnet); the
+AI buttons gray out otherwise and every manual flow is unchanged. Machine
+identifications are cached per QR code in the `machineAi` table (synced like
+everything else), so each sticker is only asked once.
+
+Setup:
+
+1. The app is served over HTTPS, so the proxy must be too or the browser blocks
+   the calls as mixed content. On the proxy host:
+   `tailscale serve --bg --https=443 localhost:8317`
+2. In the app: **Stats tab → AI assist card** → enter the `https://….ts.net`
+   endpoint, API key, and model id → **Test & save**. The proxy's CORS config
+   must allow the app's origin.
+
+### Starter programs
+
+Saving a new machine also generates a beginner **starter program** for it
+(sets × reps, a guess-labeled starting weight with a plain-words effort check,
+rest time, and a progression rule), cached in the synced `aiPrograms` table.
+The set logger pre-fills empty rows from the program until real history exists —
+after that, previous performance always wins. Programs are sized by the
+**training profile** (Stats tab: experience, goal, days/week, session length,
+optional age/sex, limitations); with no profile, the machine screen shows a
+one-time two-question quick setup with a skip option.
+
 ## Sync (self-hosted Convex)
 
 Optional: a self-hosted Convex backend keeps the durable copy of personal data

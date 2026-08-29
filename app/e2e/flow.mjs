@@ -229,6 +229,78 @@ await step('data: export + reimport round-trip', async () => {
   await page.getByText('181.9 lb').waitFor() // data intact after merge
 })
 
+// ---- AI assist (CLIProxyAPI mocked at the network layer) ----
+await page.route('https://ai.e2e/**', async (route) => {
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  }
+  if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+  if (route.request().url().includes('/v1/models')) {
+    return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ data: [] }) })
+  }
+  const post = route.request().postData() ?? ''
+  const content = post.includes('starter program')
+    ? JSON.stringify({
+        sets: 3, reps: 12, startWeightLb: 90, restSeconds: 75,
+        effortCheck: 'Last 2 reps should feel hard.',
+        progression: 'Add 10 lb when you get all 3 sets of 12.',
+        warmup: '1 light set of 10 first.', cautions: '',
+      })
+    : JSON.stringify({ items: [
+        { name: 'Eggs (2, scrambled)', calories: 180, protein: 12, carbs: 2, fat: 13, meal: 'breakfast' },
+        { name: 'Toast w/ butter', calories: 190, protein: 4, carbs: 24, fat: 8, meal: 'breakfast' },
+      ] })
+  return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }] }) })
+})
+
+await step('ai: configure proxy in Stats (mocked)', async () => {
+  await page.locator('.tab', { hasText: 'Stats' }).click()
+  await page.locator('input[placeholder="https://optiplex.tailnet.ts.net"]').fill('https://ai.e2e')
+  await page.getByText('Test & save').click()
+  await page.getByText('Connected ✓').waitFor()
+})
+
+await step('ai: describe-it parses food into entries (mocked)', async () => {
+  await page.locator('.tab', { hasText: 'Fuel' }).click()
+  await page.getByText('＋ Quick add').click()
+  await page.locator('textarea.text-in').fill('2 eggs and toast with butter')
+  await page.getByText('Analyze with AI').click()
+  await page.getByText('AI estimate — review').waitFor()
+  await page.getByText('370 kcal').waitFor()
+  await page.locator('.big-btn', { hasText: 'Add 2 items' }).click()
+  await page.getByText('180 kcal · 12P').waitFor()
+  await page.getByText('190 kcal · 4P').waitFor()
+})
+
+await step('ai: new machine -> quick setup -> starter program (mocked)', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.getByText('Scan machine').waitFor()
+  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=chpx')
+  await page.getByText('Go').click()
+  await page.getByText('Unknown QR code').waitFor() // machine setup screen mounted
+  await page.locator('input[placeholder="Chest press by the windows"]').fill('Chest press by the door')
+  await page.locator('select.text-in').selectOption({ label: 'Chest Press' })
+  await page.getByText('Save my machine').click()
+  await page.getByText('Quick setup — sizes your program').waitFor() // no profile yet -> inline prompt
+  await page.getByText('Get my program').click()
+  await page.getByText('Your starter program').waitFor()
+  await page.getByText('3×12').waitFor()
+  await page.getByText('~90').waitFor()
+  await page.getByText('Add 10 lb when you get all 3 sets of 12.').waitFor()
+})
+
+await step('ai: set logger prefilled from program targets', async () => {
+  await page.getByText('Log sets on this machine').click()
+  await page.locator('h1', { hasText: 'Chest Press' }).waitFor()
+  await page.getByText('AI target 90×12').waitFor()
+  if (await page.locator('.set-in').first().inputValue() !== '90') throw new Error('weight not prefilled from program')
+  if (await page.locator('.set-in').nth(1).inputValue() !== '12') throw new Error('reps not prefilled from program')
+  await page.locator('.ghost-btn.danger', { hasText: 'Discard workout' }).click() // confirm auto-accepted
+  await page.getByText('Choose routine').waitFor()
+})
+
 await page.screenshot({ path: 'e2e/final-home.png' })
 console.log(errors.length ? `PAGE ERRORS:\n${errors.join('\n')}` : 'NO PAGE ERRORS')
 await browser.close()

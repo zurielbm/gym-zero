@@ -389,6 +389,17 @@ a { color: var(--ink); }
   .p-h1 { font-size: 2.3rem; }
 }
 
+/* ============ segmented picker (training profile) ============ */
+.seg { display: flex; gap: 4px; margin: 4px 0 10px; flex-wrap: wrap; }
+.seg button {
+  flex: 1; min-width: 58px;
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em;
+  padding: 8px 4px; background: transparent;
+  border: 1px solid var(--hairline); color: var(--muted); cursor: pointer;
+}
+.seg button.on { background: var(--lime); color: var(--on-lime); border-color: var(--lime); }
+.seg button:not(.on):hover { border-color: var(--ghost); }
+
 @media (prefers-reduced-motion: reduce) {
   .screen, .rest-toast, .qr-found { animation: none; }
   .scanline { animation-duration: 6s; }

@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import { currentUser } from './auth-store'
 import type {
-  BodyStatEntry, EquipmentModel, Exercise, FoodEntry, GymMachine, Routine, SavedMeal, Settings, TapeEntry, Workout, WorkoutSet,
+  AiProgram, BodyStatEntry, EquipmentModel, Exercise, FoodEntry, GymMachine, MachineAiInfo, Routine, SavedMeal, Settings, TapeEntry, Workout, WorkoutSet,
 } from '../types'
 
 export interface EquipmentModelRecord extends EquipmentModel {
@@ -51,6 +51,8 @@ class GymTrackerDatabase extends Dexie {
   savedMeals!: Table<SavedMeal, string>
   bodyStats!: Table<BodyStatEntry, string>
   tape!: Table<TapeEntry, string>
+  machineAi!: Table<MachineAiInfo, string>
+  aiPrograms!: Table<AiProgram, string>
   settings!: Table<SettingsRecord, 'settings'>
   outbox!: Table<OutboxEntry, string>
 
@@ -73,6 +75,12 @@ class GymTrackerDatabase extends Dexie {
     this.version(3).stores({
       bodyStats: 'id,date,at',
       tape: 'id,date,at',
+    })
+    this.version(4).stores({
+      machineAi: 'id',
+    })
+    this.version(5).stores({
+      aiPrograms: 'id',
     })
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../AppContext'
-import type { GymMachine, PrevPerformance, Routine, WorkoutSet } from '../types'
+import type { AiProgram, GymMachine, PrevPerformance, Routine, WorkoutSet } from '../types'
 
 interface Draft { w: string; r: string }
 
@@ -10,6 +10,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   const [sets, setSets] = useState<WorkoutSet[]>([])
   const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId)
   const [prev, setPrev] = useState<Record<string, PrevPerformance | undefined>>({})
+  const [programs, setPrograms] = useState<Record<string, AiProgram | undefined>>({})
   const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [machines, setMachines] = useState<GymMachine[]>([])
   const [elapsed, setElapsed] = useState('0:00')
@@ -63,6 +64,14 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     )
   }, [api, workout, currentId, prev])
 
+  // AI starter program for the current exercise's machine (fallback targets when no history)
+  useEffect(() => {
+    if (!currentId || machines.length === 0 || currentId in programs) return
+    const machine = machines.find((m) => m.exerciseId === currentId)
+    if (!machine) { setPrograms((old) => ({ ...old, [currentId]: undefined })); return }
+    api.getAiProgram(machine.id).then((p) => setPrograms((old) => ({ ...old, [currentId]: p })))
+  }, [api, currentId, machines, programs])
+
   // exercise list: routine order, plus anything logged outside the routine (e.g. scanned machine)
   const exerciseIds = useMemo(() => {
     const ids = routine ? routine.items.map((i) => i.exerciseId) : []
@@ -82,12 +91,14 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   }
 
   const targetSets = (exerciseId: string) =>
-    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? 3
+    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? programs[exerciseId]?.sets ?? 3
 
   const logged = sets
     .filter((s) => s.exerciseId === currentId)
     .sort((a, b) => a.setNumber - b.setNumber)
   const perf = currentId ? prev[currentId] : undefined
+  // AI targets only fill the gap until real history exists — history always wins
+  const progTarget = currentId && !perf ? programs[currentId] : undefined
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
   const defaultFor = (i: number): Draft => {
@@ -95,8 +106,8 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     if (d) return d
     const fromPrev = perf?.sets[i] ?? perf?.sets[perf.sets.length - 1]
     const before = logged[i - 1]
-    const w = fromPrev?.weightLb ?? before?.weightLb
-    const r = fromPrev?.reps ?? before?.reps
+    const w = fromPrev?.weightLb ?? before?.weightLb ?? progTarget?.startWeightLb
+    const r = fromPrev?.reps ?? before?.reps ?? progTarget?.reps
     return { w: w != null ? String(w) : '', r: r != null ? String(r) : '' }
   }
 
@@ -117,7 +128,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     })
     setSets((old) => [...old, saved])
     setDrafts((old) => { const n = { ...old }; delete n[i]; return n })
-    startRest()
+    startRest(progTarget?.restSeconds)
   }
 
   const switchExercise = (id: string) => {
@@ -198,7 +209,13 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
                         inputMode="decimal" value={d.w} placeholder="lb"
                         onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, w: e.target.value } }))}
                       />
-                      {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+                      {prevHint
+                        ? <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>
+                        : isNext && progTarget && (
+                          <span className="prev">
+                            AI target {progTarget.startWeightLb != null ? `${progTarget.startWeightLb}×` : ''}{progTarget.reps}
+                          </span>
+                        )}
                     </div>
                     <input
                       className={`set-in${isNext ? '' : ' pending'}`}

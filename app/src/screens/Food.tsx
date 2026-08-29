@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
+import { aiConfig, parseFood, useAiAvailable, type AiFoodItem } from '../lib/ai'
 import type { DayFoodStats, FoodEntry, MealSlot, SavedMeal } from '../types'
 import { toDayKey } from '../types'
 
@@ -25,6 +26,12 @@ export function FoodScreen() {
   const [saved, setSaved] = useState<SavedMeal[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState({ name: '', calories: '', protein: '', meal: currentSlot() as MealSlot, save: false })
+  const ai = useAiAvailable(settings)
+  const [aiText, setAiText] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiItems, setAiItems] = useState<AiFoodItem[] | null>(null)
+  const [aiMeal, setAiMeal] = useState<MealSlot>(currentSlot())
 
   const refresh = useCallback(async () => {
     setEntries(await api.listFood(today))
@@ -60,6 +67,39 @@ export function FoodScreen() {
 
   const remove = async (id: string) => {
     await api.deleteFood(id)
+    refresh()
+  }
+
+  const analyze = async () => {
+    const config = aiConfig(settings)
+    if (!config || !aiText.trim() || aiBusy) return
+    setAiBusy(true)
+    setAiError(null)
+    try {
+      const items = await parseFood(config, aiText)
+      setAiItems(items)
+      setAiMeal(items.find((item) => item.meal)?.meal ?? currentSlot())
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  const patchAiItem = (index: number, patch: Partial<AiFoodItem>) =>
+    setAiItems((items) => items!.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+
+  const addAllAi = async () => {
+    for (const item of aiItems ?? []) {
+      if (!item.name.trim() || !isFinite(item.calories)) continue
+      await api.addFood({
+        date: today, meal: aiMeal, name: item.name.trim(),
+        calories: item.calories, protein: item.protein, carbs: item.carbs, fat: item.fat,
+      })
+    }
+    setAiItems(null)
+    setAiText('')
+    setShowAdd(false)
     refresh()
   }
 
@@ -143,8 +183,59 @@ export function FoodScreen() {
             </>
           )}
 
-          {showAdd ? (
+          {aiItems ? (
             <div className="card">
+              <div className="row">
+                <span className="lab lm">✦ AI estimate — review</span>
+                <span className="lab">{aiItems.reduce((t, i) => t + i.calories, 0)} kcal</span>
+              </div>
+              {aiItems.map((item, i) => (
+                <div key={i} style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+                  <input className="text-in" style={{ flex: 1, minWidth: 0 }} value={item.name}
+                    onChange={(e) => patchAiItem(i, { name: e.target.value })} />
+                  <input className="text-in" style={{ width: 58 }} inputMode="numeric" title="Calories" value={item.calories}
+                    onChange={(e) => patchAiItem(i, { calories: parseInt(e.target.value, 10) || 0 })} />
+                  <input className="text-in" style={{ width: 44 }} inputMode="numeric" title="Protein (g)" value={item.protein}
+                    onChange={(e) => patchAiItem(i, { protein: parseInt(e.target.value, 10) || 0 })} />
+                  <button className="del" title="Remove" onClick={() => setAiItems((items) => items!.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+              <span className="small" style={{ display: 'block', marginTop: 6 }}>Name · kcal · protein — estimates, tweak anything.</span>
+              <div className="field" style={{ marginTop: 10 }}>
+                <label>Meal</label>
+                <select className="text-in" value={aiMeal} onChange={(e) => setAiMeal(e.target.value as MealSlot)}>
+                  {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
+                </select>
+              </div>
+              <button className="big-btn" onClick={() => void addAllAi()} disabled={aiItems.length === 0}>
+                Add {aiItems.length} item{aiItems.length === 1 ? '' : 's'} →
+              </button>
+              <div style={{ height: 8 }} />
+              <button className="ghost-btn" onClick={() => setAiItems(null)}>Back</button>
+            </div>
+          ) : showAdd ? (
+            <div className="card">
+              <div className="field">
+                <label style={ai.available ? { color: 'var(--lime)' } : undefined}>
+                  ✦ Describe it{ai.available ? '' : ' — offline'}
+                </label>
+                <textarea
+                  className="text-in" rows={2} style={{ resize: 'none', ...(ai.available ? {} : { opacity: 0.55 }) }}
+                  placeholder="2 eggs, toast with butter, café con leche"
+                  value={aiText} disabled={!ai.available || aiBusy}
+                  onChange={(e) => setAiText(e.target.value)}
+                />
+              </div>
+              <button className="ghost-btn" disabled={!ai.available || aiBusy || !aiText.trim()} onClick={() => void analyze()}>
+                {aiBusy ? 'Analyzing…' : 'Analyze with AI'}
+              </button>
+              {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{aiError}</span>}
+              {!ai.available && (
+                <span className="small" style={{ display: 'block', marginTop: 6 }}>
+                  {ai.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+                </span>
+              )}
+              <div style={{ height: 14 }} />
               <div className="field">
                 <label>Food</label>
                 <input className="text-in" autoFocus value={form.name} placeholder="Chicken bowl"

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useApp } from '../AppContext'
+import { Seg } from '../components/Seg'
 import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
 import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
+import { aiConfig, probeAi } from '../lib/ai'
 import { signOut } from '../lib/auth-client'
-import type { BodyStatEntry, WeekActivity, WorkoutSummary } from '../types'
+import type { BodyStatEntry, Settings, WeekActivity, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
 function AccountCard() {
@@ -52,6 +54,151 @@ function AccountCard() {
         <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={busy} onClick={() => void claim()}>Claim old data</button>
         <button className="ghost-btn danger" style={{ width: 'auto', padding: '10px 18px' }} onClick={() => void signOut()}>Sign out</button>
       </div>
+    </div>
+  )
+}
+
+function TrainingProfileCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const [limitations, setLimitations] = useState(settings.limitations ?? '')
+  const [age, setAge] = useState(settings.birthYear ? String(new Date().getFullYear() - settings.birthYear) : '')
+
+  const patch = async (p: Partial<Settings>) => {
+    await api.saveSettings({ ...settings, ...p })
+    await refreshSettings()
+  }
+
+  return (
+    <div className="card">
+      <span className="lab" style={{ display: 'block' }}>Training profile</span>
+      <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
+        Sizes your AI starter programs. Everything is optional — saves as you tap.
+      </span>
+      <span className="lab">Experience</span>
+      <Seg
+        options={[{ v: 'new', label: 'New to gym' }, { v: 'returning', label: 'Returning' }, { v: 'experienced', label: 'Experienced' }]}
+        value={settings.experience} onPick={(v) => void patch({ experience: v })}
+      />
+      <span className="lab">Goal</span>
+      <Seg
+        options={[
+          { v: 'recomp', label: 'Muscle + abs' }, { v: 'muscle', label: 'Muscle' },
+          { v: 'fat-loss', label: 'Fat loss' }, { v: 'strength', label: 'Strength' }, { v: 'general', label: 'Fitness' },
+        ]}
+        value={settings.goal} onPick={(v) => void patch({ goal: v })}
+      />
+      <div className="in-grid">
+        <div>
+          <span className="lab">Days / week</span>
+          <Seg
+            options={[{ v: 2, label: '2' }, { v: 3, label: '3' }, { v: 4, label: '4' }, { v: 5, label: '5+' }]}
+            value={settings.daysPerWeek} onPick={(v) => void patch({ daysPerWeek: v })}
+          />
+        </div>
+        <div>
+          <span className="lab">Session</span>
+          <Seg
+            options={[{ v: 45, label: '45m' }, { v: 60, label: '60m' }, { v: 90, label: '90m' }]}
+            value={settings.sessionMinutes} onPick={(v) => void patch({ sessionMinutes: v })}
+          />
+        </div>
+      </div>
+      <div className="in-grid">
+        <div className="field" style={{ margin: 0 }}>
+          <label>Age (optional)</label>
+          <input
+            className="text-in" inputMode="numeric" value={age} placeholder="—"
+            onChange={(e) => setAge(e.target.value)}
+            onBlur={() => {
+              const a = parseInt(age, 10)
+              void patch({ birthYear: isFinite(a) && a > 0 && a < 120 ? new Date().getFullYear() - a : undefined })
+            }}
+          />
+        </div>
+        <div>
+          <span className="lab">Sex (optional)</span>
+          <Seg
+            options={[{ v: 'male', label: 'M' }, { v: 'female', label: 'F' }]}
+            value={settings.sex} onPick={(v) => void patch({ sex: settings.sex === v ? undefined : v })}
+          />
+        </div>
+      </div>
+      <div className="field" style={{ margin: '10px 0 0' }}>
+        <label>Anything to work around? (injuries etc.)</label>
+        <input
+          className="text-in" value={limitations} placeholder="e.g. lower back pain"
+          onChange={(e) => setLimitations(e.target.value)}
+          onBlur={() => void patch({ limitations: limitations.trim() || undefined })}
+        />
+      </div>
+    </div>
+  )
+}
+
+function AiCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const [endpoint, setEndpoint] = useState(settings.aiEndpoint ?? '')
+  const [apiKey, setApiKey] = useState(settings.aiApiKey ?? '')
+  const [model, setModel] = useState(settings.aiModel ?? '')
+  const [state, setState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+
+  const save = async () => {
+    setState('testing')
+    const next = {
+      ...settings,
+      aiEndpoint: endpoint.trim() || undefined,
+      aiApiKey: apiKey.trim() || undefined,
+      aiModel: model.trim() || undefined,
+    }
+    await api.saveSettings(next)
+    await refreshSettings()
+    const config = aiConfig(next)
+    if (!config) { setState('idle'); return }
+    setState(await probeAi(config) ? 'ok' : 'fail')
+  }
+
+  return (
+    <div className="card">
+      <div className="row">
+        <span className="lab">✦ AI assist — CLIProxyAPI</span>
+        {state === 'ok' && <span className="lab lm">Connected ✓</span>}
+        {state === 'fail' && <span className="lab" style={{ color: 'var(--danger)' }}>Unreachable</span>}
+      </div>
+      <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
+        Your proxy's tailnet HTTPS address. AI buttons gray out whenever it can't be reached.
+      </span>
+      <div className="field">
+        <label>Endpoint</label>
+        <input
+          className="text-in" placeholder="https://optiplex.tailnet.ts.net" autoCapitalize="off" autoCorrect="off"
+          value={endpoint} onChange={(e) => { setEndpoint(e.target.value); setState('idle') }}
+        />
+      </div>
+      <div className="in-grid">
+        <div className="field" style={{ margin: 0 }}>
+          <label>API key</label>
+          <input
+            className="text-in" type="password" placeholder="sk-…"
+            value={apiKey} onChange={(e) => { setApiKey(e.target.value); setState('idle') }}
+          />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Model</label>
+          <input
+            className="text-in" placeholder="gemini-2.5-flash" autoCapitalize="off" autoCorrect="off"
+            value={model} onChange={(e) => { setModel(e.target.value); setState('idle') }}
+          />
+        </div>
+      </div>
+      <div style={{ height: 10 }} />
+      <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={state === 'testing'} onClick={() => void save()}>
+        {state === 'testing' ? 'Testing…' : 'Test & save'}
+      </button>
+      {state === 'fail' && (
+        <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>
+          Saved, but the proxy didn't answer. Are you on Tailscale, and is the endpoint HTTPS?
+        </span>
+      )}
     </div>
   )
 }
@@ -224,6 +371,8 @@ export function HistoryScreen() {
           </div>
 
           <AccountCard />
+          <TrainingProfileCard />
+          <AiCard />
           <DataCard />
         </div>
 
