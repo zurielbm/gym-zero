@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { currentUser } from './auth-store'
 import type {
   BodyStatEntry, EquipmentModel, Exercise, FoodEntry, GymMachine, Routine, SavedMeal, Settings, TapeEntry, Workout, WorkoutSet,
 } from '../types'
@@ -30,7 +31,14 @@ export interface OutboxEntry {
 }
 
 /** Cross-module flags the sync hooks read at write time (avoids import cycles). */
-export const syncFlags = { seeding: false }
+export const syncFlags = {
+  seeding: false,
+  /** True while copying the legacy DB into an account DB; suppresses outbox capture. */
+  adopting: false,
+}
+
+/** Database name of the pre-auth era; also used when running without a sync server. */
+export const LEGACY_DB_NAME = 'gym-tracker'
 
 class GymTrackerDatabase extends Dexie {
   exercises!: Table<Exercise, string>
@@ -46,8 +54,8 @@ class GymTrackerDatabase extends Dexie {
   settings!: Table<SettingsRecord, 'settings'>
   outbox!: Table<OutboxEntry, string>
 
-  constructor() {
-    super('gym-tracker')
+  constructor(name: string) {
+    super(name)
     this.version(1).stores({
       exercises: 'id',
       equipmentModels: 'id,*qrKeys',
@@ -69,5 +77,10 @@ class GymTrackerDatabase extends Dexie {
   }
 }
 
-export const db = new GymTrackerDatabase()
+// Each account gets its own local database so family members sharing a device
+// never see each other's rows; signed out (or local-only builds) use the
+// legacy name. Sign-in/out reloads the page, so the name is stable for the
+// lifetime of the module.
+const owner = currentUser()
+export const db = new GymTrackerDatabase(owner ? `${LEGACY_DB_NAME}::${owner.id}` : LEGACY_DB_NAME)
 export type { SettingsRecord }

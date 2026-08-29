@@ -1,5 +1,6 @@
+import Dexie from 'dexie'
 import type { EquipmentModelRecord } from './db'
-import { db, syncFlags } from './db'
+import { db, syncFlags, LEGACY_DB_NAME } from './db'
 import { normalizeQrUrl } from './qr'
 import type { BodyStatEntry, Exercise, Routine, SavedMeal, Settings, TapeEntry } from '../types'
 
@@ -82,12 +83,51 @@ async function seedLocal(): Promise<void> {
   }
 }
 
+const ADOPTED_LS = 'gym.legacy.adopted'
+
+/**
+ * One-time copy of the pre-auth local database into a fresh account database,
+ * so anything recorded before accounts existed (possibly never synced) isn't
+ * stranded. Only the first account to sign in on a device adopts; the legacy
+ * database itself is left untouched as a safety net. The copied rows reach the
+ * server through the first sync's pull-then-diff merge, not through the outbox,
+ * so a stale device can never clobber newer server data (see sync.ts).
+ */
+async function adoptLegacyDb(): Promise<boolean> {
+  if (db.name === LEGACY_DB_NAME) return false
+  if (localStorage.getItem(ADOPTED_LS)) return false
+  if (!('databases' in indexedDB)) return false
+  const names = (await indexedDB.databases()).map((d) => d.name)
+  if (!names.includes(LEGACY_DB_NAME)) return false
+  const legacy = new Dexie(LEGACY_DB_NAME)
+  try {
+    await legacy.open() // no schema declared: opens whatever versions exist
+    if ((await legacy.table('exercises').count()) === 0) return false
+    syncFlags.adopting = true
+    try {
+      for (const table of legacy.tables) {
+        if (table.name === 'outbox') continue
+        if (!db.tables.some((t) => t.name === table.name)) continue
+        await db.table(table.name).bulkPut(await table.toArray())
+      }
+    } finally {
+      syncFlags.adopting = false
+    }
+    localStorage.setItem(ADOPTED_LS, db.name)
+    return true
+  } catch {
+    return false
+  } finally {
+    legacy.close()
+  }
+}
+
 let ready: Promise<void> | undefined
 
 /** Opens the local database and writes seed data only to a completely fresh catalog. */
 export function ensureSeeded(): Promise<void> {
   ready ??= db.open().then(async () => {
-    if (await db.exercises.count() === 0) {
+    if (await db.exercises.count() === 0 && !(await adoptLegacyDb())) {
       // Seed writes replicate with a floor timestamp so they never beat a real
       // user edit already on the sync server (e.g. a customized calorie target).
       syncFlags.seeding = true

@@ -1,8 +1,11 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-# URL of the self-hosted Convex deployment; leave unset for a local-only build
+# URLs of the self-hosted Convex deployment (API + site origin serving
+# /api/auth/*); leave both unset for a local-only, login-free build
 ARG VITE_CONVEX_URL
+ARG VITE_CONVEX_SITE_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
+ENV VITE_CONVEX_SITE_URL=$VITE_CONVEX_SITE_URL
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

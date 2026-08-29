@@ -11,6 +11,8 @@
     "e2e": "node e2e/flow.mjs"
   },
   "dependencies": {
+    "@convex-dev/better-auth": "^0.12.5",
+    "better-auth": "~1.6.15",
     "convex": "^1.45.0",
     "dexie": "^4.0.11",
     "jsqr": "^1.4.0",
@@ -18,6 +20,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@types/node": "^26.4.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",

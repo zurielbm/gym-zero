@@ -1,45 +1,33 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useApp } from '../AppContext'
+import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
-import { disableSync, enableSync, syncNow, syncStore } from '../data/sync'
+import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
+import { signOut } from '../lib/auth-client'
 import type { BodyStatEntry, WeekActivity, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
-function SyncCard() {
+function AccountCard() {
   const status = useSyncExternalStore(syncStore.subscribe, syncStore.getSnapshot)
-  const [pass, setPass] = useState('')
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const user = currentUser()
 
-  if (!status.configured) return null
+  if (!status.configured || !user) return null
 
-  const connect = async () => {
+  const claim = async () => {
+    const pass = window.prompt('This account already syncs automatically. To also pull in data saved under the old sync passphrase, enter that passphrase:')
+    if (!pass) return
     setBusy(true)
-    setErr(null)
-    try { await enableSync(pass); setPass('') }
-    catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
-    finally { setBusy(false) }
-  }
-
-  if (!status.enabled) {
-    return (
-      <div className="card">
-        <span className="lab" style={{ display: 'block' }}>Sync — off</span>
-        <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
-          Back up to your server and share data across devices. Use the same
-          passphrase on every device — it is the only thing that identifies your data.
-        </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input className="text-in" type="password" placeholder="Sync passphrase" value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && connect()} />
-          <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} disabled={busy || !pass.trim()} onClick={connect}>
-            {busy ? '…' : 'Connect'}
-          </button>
-        </div>
-        {err && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{err}</span>}
-      </div>
-    )
+    setMsg(null)
+    try {
+      await claimByPassphrase(pass)
+      setMsg('Claimed — the data arrives with the next sync.')
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const stateLabel = status.phase === 'syncing' ? 'Syncing…'
@@ -49,17 +37,20 @@ function SyncCard() {
   return (
     <div className="card">
       <div className="row">
-        <span className="lab">Sync — {stateLabel}</span>
+        <span className="lab">Account — {stateLabel}</span>
         <span className="lab">
           {status.lastSyncAt ? `Last · ${new Date(status.lastSyncAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
         </span>
       </div>
+      <span className="small" style={{ display: 'block', marginTop: 4 }}>{user.name} · {user.email}</span>
       {status.phase === 'error' && status.error && (
         <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{status.error}</span>
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      {msg && <span className="small" style={{ display: 'block', marginTop: 6 }}>{msg}</span>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} onClick={syncNow}>Sync now</button>
-        <button className="ghost-btn danger" style={{ width: 'auto', padding: '10px 18px' }} onClick={() => void disableSync()}>Disconnect</button>
+        <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={busy} onClick={() => void claim()}>Claim old data</button>
+        <button className="ghost-btn danger" style={{ width: 'auto', padding: '10px 18px' }} onClick={() => void signOut()}>Sign out</button>
       </div>
     </div>
   )
@@ -232,7 +223,7 @@ export function HistoryScreen() {
             </div>
           </div>
 
-          <SyncCard />
+          <AccountCard />
           <DataCard />
         </div>
 

@@ -2,6 +2,8 @@ import Dexie, { type Transaction } from 'dexie'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../convex/_generated/api'
 import { db, syncFlags, type OutboxEntry } from './db'
+import { currentUser } from './auth-store'
+import { authClient } from '../lib/auth-client'
 
 /**
  * Replication layer between the local Dexie store and a self-hosted Convex
@@ -10,13 +12,28 @@ import { db, syncFlags, type OutboxEntry } from './db'
  * devices' writes are pulled back down. Conflict resolution is last-write-wins
  * on the writing device's wall clock, per row.
  *
- * Without VITE_CONVEX_URL at build time the whole module is inert and the app
- * behaves exactly as the original local-only build.
+ * Rows on the server belong to the signed-in Better Auth account; every call
+ * carries a short-lived JWT minted by the auth server (convex/auth.ts). The
+ * first sync of an account on a device runs a merge: claim any pre-auth
+ * passphrase data, adopt the server copy (server wins on shared rows), then
+ * push up whatever only exists locally.
+ *
+ * Without VITE_CONVEX_URL + VITE_CONVEX_SITE_URL at build time the whole
+ * module is inert and the app behaves as a local-only, login-free build.
  */
 
 const CONVEX_URL: string | undefined = import.meta.env.VITE_CONVEX_URL || undefined
-const PROFILE_LS = 'gym.sync.profileKey'
-const CURSOR_LS = 'gym.sync.cursor'
+const CONVEX_SITE_URL: string | undefined = import.meta.env.VITE_CONVEX_SITE_URL || undefined
+
+/** True when this build has a sync server, which also makes sign-in mandatory. */
+export const syncConfigured = !!CONVEX_URL && !!CONVEX_SITE_URL
+
+/** Pre-auth localStorage keys, consumed once during the first signed-in sync. */
+const LEGACY_PROFILE_LS = 'gym.sync.profileKey'
+const LEGACY_CURSOR_LS = 'gym.sync.cursor'
+
+const user = currentUser()
+const cursorKey = () => `gym.sync.cursor::${user!.id}`
 
 const SYNC_TABLES = [
   'exercises', 'equipmentModels', 'machines', 'routines',
@@ -35,8 +52,8 @@ export interface SyncStatus {
 }
 
 let status: SyncStatus = {
-  configured: !!CONVEX_URL,
-  enabled: !!CONVEX_URL && !!localStorage.getItem(PROFILE_LS),
+  configured: syncConfigured,
+  enabled: syncConfigured && !!user,
   phase: 'idle',
   pending: 0,
 }
@@ -79,6 +96,39 @@ async function deriveProfileKey(passphrase: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+// ---------- auth token ----------
+
+let tokenCache: { token: string; exp: number } | null = null
+
+function jwtExpMs(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number }
+    return (payload.exp ?? 0) * 1000
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * A Convex-ready JWT for the current session, cached until shortly before
+ * expiry (they live ~15 minutes). Returns null when the session is gone;
+ * throws on transport errors so they surface as sync errors, not sign-outs.
+ */
+async function authToken(): Promise<string | null> {
+  if (tokenCache && tokenCache.exp - Date.now() > 60_000) return tokenCache.token
+  const res = await authClient.convex.token({ fetchOptions: { throw: false } })
+  const token = res.data?.token
+  if (!token) {
+    tokenCache = null
+    if (res.error && res.error.status !== 401) {
+      throw new Error(res.error.message ?? `Auth server error (${res.error.status})`)
+    }
+    return null
+  }
+  tokenCache = { token, exp: jwtExpMs(token) }
+  return token
+}
+
 // ---------- change capture (Dexie hooks -> outbox) ----------
 
 /** Rows touched by transactions that haven't been re-read into the outbox yet. */
@@ -88,7 +138,7 @@ const seenTx = new WeakSet<Transaction>()
 const lastApplied = new Map<string, string>()
 
 function markDirty(table: string, id: unknown) {
-  if (!CONVEX_URL || !localStorage.getItem(PROFILE_LS)) return
+  if (!client || !user || syncFlags.adopting) return
   const key = `${table}:${String(id)}`
   dirty.set(key, { table, id: String(id), seed: syncFlags.seeding })
   const tx = Dexie.currentTransaction
@@ -125,7 +175,7 @@ async function flushDirty() {
 }
 
 export function initSync() {
-  if (!CONVEX_URL) return
+  if (!client || !user) return
   for (const name of SYNC_TABLES) {
     const table = db.table(name)
     table.hook('creating', function (primKey, obj) { markDirty(name, primKey ?? (obj as { id: string }).id) })
@@ -133,16 +183,14 @@ export function initSync() {
     table.hook('deleting', function (primKey) { markDirty(name, primKey) })
   }
   window.addEventListener('online', () => schedule(0))
-  setInterval(() => { if (status.enabled && navigator.onLine) schedule(0) }, 60_000)
-  if (status.enabled) {
-    void db.outbox.count().then((pending) => setStatus({ pending }))
-    schedule(0)
-  }
+  setInterval(() => { if (navigator.onLine) schedule(0) }, 60_000)
+  void db.outbox.count().then((pending) => setStatus({ pending }))
+  schedule(0)
 }
 
 // ---------- push / pull loop ----------
 
-const client = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null
+const client = syncConfigured ? new ConvexHttpClient(CONVEX_URL!) : null
 let timer: ReturnType<typeof setTimeout> | null = null
 let running = false
 let rerun = false
@@ -156,13 +204,18 @@ function schedule(delayMs: number) {
 interface PulledRecord { table: string; id: string; doc?: unknown; deleted: boolean; updatedAt: number; syncedAt: number }
 
 async function runSync() {
-  if (!client) return
-  const profileKey = localStorage.getItem(PROFILE_LS)
-  if (!profileKey || !navigator.onLine) return
+  if (!client || !user || !navigator.onLine) return
   if (running) { rerun = true; return }
   running = true
   setStatus({ phase: 'syncing', error: undefined })
   try {
+    const token = await authToken()
+    if (!token) throw new Error('Session expired — sign out and back in (Stats tab).')
+    client.setAuth(token)
+
+    // first sync of this account on this device: claim + merge instead of blind push
+    if (localStorage.getItem(cursorKey()) === null) await initialSync(client)
+
     // push
     const entries = await db.outbox.toArray()
     for (let i = 0; i < entries.length; i += 200) {
@@ -173,7 +226,7 @@ async function runSync() {
         if (!e.deleted) c.doc = e.doc
         return c
       })
-      await client.mutation(api.sync.push, { profileKey, changes })
+      await client.mutation(api.sync.push, { changes })
       // clear pushed entries unless they were re-dirtied mid-flight
       await db.transaction('rw', db.outbox, async () => {
         for (const e of batch) {
@@ -184,12 +237,12 @@ async function runSync() {
     }
 
     // pull
-    const since = Number(localStorage.getItem(CURSOR_LS) ?? '0')
-    const records = await client.query(api.sync.pull, { profileKey, since }) as PulledRecord[]
+    const since = Number(localStorage.getItem(cursorKey()) ?? '0')
+    const records = await client.query(api.sync.pull, { since }) as PulledRecord[]
     if (records.length) {
       await applyRemote(records)
       const cursor = Math.max(since, ...records.map((r) => r.syncedAt))
-      localStorage.setItem(CURSOR_LS, String(cursor))
+      localStorage.setItem(cursorKey(), String(cursor))
     }
     setStatus({ phase: 'idle', lastSyncAt: Date.now(), pending: await db.outbox.count() })
   } catch (err) {
@@ -222,51 +275,65 @@ async function applyRemote(records: PulledRecord[]) {
   if (applied > 0) window.dispatchEvent(new CustomEvent(SYNC_APPLIED_EVENT))
 }
 
-// ---------- public controls ----------
+// ---------- first sync of an account on this device ----------
 
-/** Turn on sync: server state wins for rows that exist on both sides, then local-only rows push up. */
-export async function enableSync(passphrase: string) {
-  if (!client) throw new Error('No sync server configured (VITE_CONVEX_URL).')
-  if (!passphrase.trim()) throw new Error('Enter a sync passphrase.')
-  const profileKey = await deriveProfileKey(passphrase.trim())
-  localStorage.setItem(PROFILE_LS, profileKey)
-  localStorage.setItem(CURSOR_LS, '0')
-  setStatus({ enabled: true, phase: 'syncing', error: undefined })
-  try {
-    // 1. adopt everything the server already has
-    const records = await client.query(api.sync.pull, { profileKey, since: 0 }) as PulledRecord[]
-    const serverFp = new Map<string, string>()
-    for (const r of records) serverFp.set(`${r.table}:${r.id}`, fingerprint(r.deleted ? undefined : r.doc, r.deleted))
-    if (records.length) {
-      await applyRemote(records)
-      localStorage.setItem(CURSOR_LS, String(Math.max(...records.map((r) => r.syncedAt))))
-    }
-    // 2. enqueue local rows the server doesn't have yet (or that differ locally)
-    const now = Date.now()
-    const entries: OutboxEntry[] = []
-    for (const name of SYNC_TABLES) {
-      for (const row of await db.table(name).toArray() as Array<{ id: string }>) {
-        const key = `${name}:${row.id}`
-        const doc = sanitize(row)
-        if (serverFp.get(key) === fingerprint(doc, false)) continue
-        entries.push({ key, table: name, id: row.id, doc, deleted: false, updatedAt: now })
-      }
-    }
-    if (entries.length) await db.outbox.bulkPut(entries)
-    setStatus({ pending: await db.outbox.count() })
-    await runSync()
-  } catch (err) {
-    setStatus({ phase: 'error', error: err instanceof Error ? err.message : String(err) })
-    throw err
-  }
+/** Move pre-auth rows into the account, in batches until none remain. */
+async function claimProfileKey(convex: ConvexHttpClient, profileKey: string) {
+  while ((await convex.mutation(api.sync.claimLegacyProfile, { profileKey })) > 0) { /* next batch */ }
 }
 
-/** Turn off sync on this device. Local data stays; nothing is deleted anywhere. */
-export async function disableSync() {
-  localStorage.removeItem(PROFILE_LS)
-  localStorage.removeItem(CURSOR_LS)
-  await db.outbox.clear()
-  setStatus({ enabled: false, phase: 'idle', error: undefined, pending: 0 })
+/**
+ * Merge, not blind push: claim passphrase-era data, adopt the server copy
+ * (server wins for rows that exist on both sides), then enqueue only rows
+ * that exist locally alone or still differ after the pull.
+ */
+async function initialSync(convex: ConvexHttpClient) {
+  const legacyKey = localStorage.getItem(LEGACY_PROFILE_LS)
+  if (legacyKey) {
+    await claimProfileKey(convex, legacyKey)
+    localStorage.removeItem(LEGACY_PROFILE_LS)
+    localStorage.removeItem(LEGACY_CURSOR_LS)
+  }
+
+  const records = await convex.query(api.sync.pull, { since: 0 }) as PulledRecord[]
+  const serverFp = new Map<string, string>()
+  for (const r of records) serverFp.set(`${r.table}:${r.id}`, fingerprint(r.deleted ? undefined : r.doc, r.deleted))
+  if (records.length) await applyRemote(records)
+
+  const now = Date.now()
+  const entries: OutboxEntry[] = []
+  for (const name of SYNC_TABLES) {
+    for (const row of await db.table(name).toArray() as Array<{ id: string }>) {
+      const key = `${name}:${row.id}`
+      const doc = sanitize(row)
+      if (serverFp.get(key) === fingerprint(doc, false)) continue
+      entries.push({ key, table: name, id: row.id, doc, deleted: false, updatedAt: now })
+    }
+  }
+  if (entries.length) await db.outbox.bulkPut(entries)
+  setStatus({ pending: await db.outbox.count() })
+
+  const cursor = records.length ? Math.max(...records.map((r) => r.syncedAt)) : 0
+  localStorage.setItem(cursorKey(), String(cursor))
+}
+
+// ---------- public controls ----------
+
+/**
+ * Manual recovery path: adopt data recorded under the old passphrase scheme
+ * from a device that never held it locally (e.g. a family member's fresh
+ * phone). Claims on the server, then forces a full re-merge.
+ */
+export async function claimByPassphrase(passphrase: string) {
+  if (!client || !user) throw new Error('Sign in first.')
+  if (!passphrase.trim()) throw new Error('Enter the old sync passphrase.')
+  const profileKey = await deriveProfileKey(passphrase.trim())
+  const token = await authToken()
+  if (!token) throw new Error('Session expired — sign out and back in.')
+  client.setAuth(token)
+  await claimProfileKey(client, profileKey)
+  localStorage.removeItem(cursorKey()) // next sync re-runs the full merge
+  schedule(0)
 }
 
 export function syncNow() { schedule(0) }
