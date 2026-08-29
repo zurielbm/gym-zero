@@ -11,6 +11,7 @@
     "e2e": "node e2e/flow.mjs"
   },
   "dependencies": {
+    "convex": "^1.45.0",
     "dexie": "^4.0.11",
     "jsqr": "^1.4.0",
     "react": "^19.1.0",

@@ -24,28 +24,33 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
   }
 
   return (
-    <>
-      <h1 className="p-h1">Workout done 🎉</h1>
+    <div className="page">
+      <span className="lab lm">Workout complete</span>
+      <h1 className="p-h1" style={{ fontSize: '2.8rem', margin: '6px 0 2px' }}>Done<span className="dot">.</span></h1>
       <p className="p-sub">Saved locally — no account needed</p>
 
-      <div className="rings">
-        <div className="ring-card">
-          <span className="stat-num">{Math.max(1, Math.round(summary.durationSec / 60))}<span className="small"> min</span></span>
-          <br /><span className="small">Duration</span>
-        </div>
-        <div className="ring-card">
-          <span className="stat-num">{Math.round(summary.totalVolumeLb).toLocaleString()}<span className="small"> lb</span></span>
-          <br /><span className="small">Volume</span>
-        </div>
+      <div className="stat-strip">
+        <span>
+          <span className="num">{Math.max(1, Math.round(summary.durationSec / 60))}</span>
+          <span className="lab">Minutes</span>
+        </span>
+        <span>
+          <span className="num">{summary.setCount}</span>
+          <span className="lab">Sets</span>
+        </span>
+        <span>
+          <span className="num">{Math.round(summary.totalVolumeLb).toLocaleString()}</span>
+          <span className="lab">Lb volume</span>
+        </span>
       </div>
 
       <div className="card">
-        <b style={{ fontSize: '0.85rem' }}>Highlights</b>
+        <span className="lab" style={{ display: 'block', marginBottom: 4 }}>Highlights</span>
         {summary.prs.length > 0 ? (
           summary.prs.map((pr) => (
             <div key={pr.exerciseId} className="meal-row">
-              <span>{exercises.get(pr.exerciseId)?.name ?? pr.exerciseId} {pr.weightLb}×{pr.reps}</span>
-              <span className="pr-flag">PR</span>
+              <span>{exercises.get(pr.exerciseId)?.name ?? pr.exerciseId} — {pr.weightLb}×{pr.reps}</span>
+              <span className="pr-flag">PR ★</span>
             </div>
           ))
         ) : (
@@ -54,7 +59,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
       </div>
 
       <div className="card">
-        <b style={{ fontSize: '0.85rem' }}>Notes</b>
+        <span className="lab" style={{ display: 'block' }}>Notes</span>
         <textarea
           className="text-in" rows={2} style={{ marginTop: 8, resize: 'none' }}
           placeholder="Felt strong. Try seat 5 on leg press next time."
@@ -65,7 +70,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
         <button className="ghost-btn" onClick={saveNotes}>{notesSaved ? 'Saved ✓' : 'Save note'}</button>
       </div>
 
-      <button className="big-btn" onClick={() => go({ name: 'home' })}>Back to Home</button>
-    </>
+      <button className="big-btn" onClick={() => go({ name: 'home' })}>Back to Home →</button>
+    </div>
   )
 }

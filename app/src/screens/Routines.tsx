@@ -29,35 +29,36 @@ export function RoutinesScreen() {
   }
 
   return (
-    <>
+    <div className="page">
       <button className="back-link" onClick={() => go({ name: 'home' })}>‹ Home</button>
-      <h1 className="p-h1">Choose routine</h1>
+      <h1 className="p-h1">Choose routine<span className="dot">.</span></h1>
       <p className="p-sub">Previous weights load automatically</p>
 
       {activeWorkout && (
-        <button className="big-btn blue" style={{ marginBottom: 12 }} onClick={() => go({ name: 'workout' })}>
-          Resume current workout
+        <button className="big-btn" style={{ marginBottom: 16 }} onClick={() => go({ name: 'workout' })}>
+          Resume current workout →
         </button>
       )}
 
       {ordered.map((r) => (
         <div key={r.id} className="card tappable" onClick={() => start(r)}>
           <div className="row">
-            <b style={{ fontSize: '1.02rem' }}>{r.emoji ? `${r.emoji} ` : ''}{r.name}</b>
-            {r.id === upNextId && <span className="chip blue" style={{ margin: 0 }}>Up next</span>}
+            <b style={{ fontSize: '1rem' }}>{r.emoji ? `${r.emoji} ` : ''}{r.name}</b>
+            {r.id === upNextId && <span className="chip solid" style={{ margin: 0 }}>Up next</span>}
           </div>
-          <span className="small">
+          <span className="small" style={{ display: 'block', margin: '4px 0 6px' }}>
             {r.items.map((i) => exercises.get(i.exerciseId)?.name ?? i.exerciseId).join(' · ')}
           </span>
-          <div className="row" style={{ marginTop: 6 }}>
-            <span className="small">{r.items.length} exercises</span>
-            <span className="small">Last: {relativeDay(r.lastUsedAt)}</span>
+          <div className="row">
+            <span className="lab">{r.items.length} exercises</span>
+            <span className="lab">Last · {relativeDay(r.lastUsedAt)}</span>
           </div>
         </div>
       ))}
 
       <button
         className="ghost-btn"
+        style={{ marginTop: 10 }}
         onClick={async () => {
           // freestyle session without a routine
           const w = await api.startWorkout()
@@ -65,8 +66,8 @@ export function RoutinesScreen() {
           go({ name: 'workout' })
         }}
       >
-        Start empty workout
+        ＋ Start empty workout
       </button>
-    </>
+    </div>
   )
 }

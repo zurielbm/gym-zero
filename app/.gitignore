@@ -1,6 +1,9 @@
 node_modules
 dist
 *.local
+# personal data seed — never committed (see src/data/seed.ts)
+src/data/seed.local.ts
 e2e/fail-*.png
 e2e/final-*.png
 .DS_Store
+tsconfig.tsbuildinfo

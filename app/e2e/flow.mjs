@@ -68,7 +68,7 @@ await step('switch exercise via pill', async () => {
 })
 
 await step('scan screen: manual QR resolve -> known model', async () => {
-  await page.locator('.fab').click()
+  await page.locator('.tabbar .scan-key').click()
   await page.getByText('Scan machine').waitFor()
   await page.locator('.text-in').fill('https://youtu.be/4s3rkgBX5So')
   await page.getByText('Go', { exact: true }).click()
@@ -96,7 +96,7 @@ await step('log sets from machine -> back in logger on Leg Press', async () => {
 })
 
 await step('rescan resolves to MY machine now', async () => {
-  await page.locator('.fab').click()
+  await page.locator('.tabbar .scan-key').click()
   await page.locator('.text-in').fill('https://www.youtube.com/watch?v=4s3rkgBX5So')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('My setup').waitFor() // straight to mapped machine screen
@@ -129,7 +129,7 @@ await step('finish workout -> summary with volume', async () => {
   await page.getByText('‹ Back').click() // scan screen back -> active workout
   await page.getByText('Finish workout').waitFor()
   await page.getByText('Finish workout').click()
-  await page.getByText('Workout done 🎉').waitFor()
+  await page.getByText('Done.').waitFor()
   await page.getByText('Highlights').waitFor()
 })
 
@@ -146,7 +146,7 @@ await step('back home -> streak + last workout card', async () => {
 })
 
 await step('food: saved meal chip adds entry + stats update', async () => {
-  await page.locator('.tab', { hasText: 'Food' }).click()
+  await page.locator('.tab', { hasText: 'Fuel' }).click()
   await page.getByText('Quick add — saved meals').waitFor()
   await page.getByText('🥤 Protein shake').click()
   await page.getByText('340 kcal · 48P').waitFor()
@@ -162,7 +162,7 @@ await step('food: quick add custom entry', async () => {
 })
 
 await step('history: workout listed with volume + week strip', async () => {
-  await page.locator('.tab', { hasText: 'History' }).click()
+  await page.locator('.tab', { hasText: 'Stats' }).click()
   await page.getByText('Weekly volume').waitFor()
   await page.locator('.cal-day.did').first().waitFor()
   await page.getByText('“felt strong”').waitFor()
@@ -174,14 +174,59 @@ await step('history: log body weight', async () => {
   await page.getByText('182.4 lb').waitFor()
 })
 
+await step('body: open from stats card, quick-log became a record', async () => {
+  await page.getByText('Open ›').click()
+  await page.locator('h1', { hasText: 'Body' }).waitFor()
+  await page.getByText('182.4 lb').first().waitFor() // latest grid + history list
+})
+
+await step('body: log full reading with fat %', async () => {
+  await page.getByText('+ Log reading').click()
+  await page.locator('.in-grid input').nth(0).fill('181.9') // weight
+  await page.locator('.in-grid input').nth(2).fill('15.2') // body fat
+  await page.getByText('Save reading').click()
+  await page.getByText('Last reading ·').waitFor()
+  await page.getByText('181.9').first().waitFor()
+  await page.getByText('15.2').first().waitFor()
+})
+
+await step('body: tape session computes waist–hip ratio', async () => {
+  await page.locator('.seg button', { hasText: 'Tape' }).click()
+  await page.getByText('+ Log tape session').click()
+  await page.locator('.field', { hasText: 'Waist' }).locator('input').fill('30')
+  await page.locator('.field', { hasText: 'Hip' }).locator('input').fill('34.3')
+  await page.getByText('Save session').click()
+  await page.getByText('Waist–hip ratio').waitFor()
+  await page.getByText('0.87').waitFor()
+})
+
+await step('body: back to stats shows the new weight', async () => {
+  await page.getByText('‹ Stats').click()
+  await page.getByText('181.9 lb').waitFor()
+})
+
 await step('persistence: reload keeps food + history (IndexedDB)', async () => {
   await page.reload()
   await page.getByText('Start Workout').waitFor({ timeout: 8000 })
-  await page.locator('.tab', { hasText: 'History' }).click()
+  await page.locator('.tab', { hasText: 'Stats' }).click()
   await page.getByText('“felt strong”').waitFor()
-  await page.getByText('182.4 lb').waitFor()
-  await page.locator('.tab', { hasText: 'Food' }).click()
+  await page.getByText('181.9 lb').waitFor()
+  await page.locator('.tab', { hasText: 'Fuel' }).click()
   await page.getByText('650 kcal · 45P').waitFor()
+})
+
+await step('data: export + reimport round-trip', async () => {
+  await page.locator('.tab', { hasText: 'Stats' }).click()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByText('Export data').click(),
+  ])
+  await page.getByText('Exported', { exact: false }).waitFor()
+  await page.setInputFiles('input[type=file]', await download.path())
+  await page.getByText(/Imported \d+ rows/).waitFor() // merge confirm auto-accepted
+  await page.getByText('Start Workout').waitFor({ timeout: 8000 }) // reload lands home
+  await page.locator('.tab', { hasText: 'Stats' }).click()
+  await page.getByText('181.9 lb').waitFor() // data intact after merge
 })
 
 await page.screenshot({ path: 'e2e/final-home.png' })

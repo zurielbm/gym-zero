@@ -9,6 +9,7 @@ export type Screen =
   | { name: 'machine'; machineId?: string; modelId?: string; qrUrl?: string }
   | { name: 'food' }
   | { name: 'history' }
+  | { name: 'body' }
   | { name: 'summary'; workoutId: string }
 
 export interface AppCtx {

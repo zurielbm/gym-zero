@@ -1,7 +1,7 @@
 import type { EquipmentModelRecord } from './db'
-import { db } from './db'
+import { db, syncFlags } from './db'
 import { normalizeQrUrl } from './qr'
-import type { Exercise, Routine, SavedMeal, Settings } from '../types'
+import type { BodyStatEntry, Exercise, Routine, SavedMeal, Settings, TapeEntry } from '../types'
 
 const exercises: Exercise[] = [
   { id: 'ex-chest-press', name: 'Chest Press', muscleGroups: ['chest', 'triceps'], equipment: 'machine' },
@@ -58,19 +58,52 @@ const savedMeals: SavedMeal[] = [
 ]
 const settings: Settings = { calorieTarget: 2200, proteinTarget: 180, restSeconds: 90 }
 
+/**
+ * Optional personal seed. `src/data/seed.local.ts` is gitignored, so private
+ * records (body readings, tape sessions) stay out of the repo; a fresh clone
+ * simply has no such module and this glob is empty. Rows use fixed ids and are
+ * only added when absent — an edit or delete synced from another device wins.
+ */
+type LocalSeed = { bodyStats?: BodyStatEntry[]; tape?: TapeEntry[] }
+const localSeedModules = import.meta.glob<LocalSeed>('./seed.local.ts')
+
+async function seedLocal(): Promise<void> {
+  for (const load of Object.values(localSeedModules)) {
+    const mod = await load()
+    syncFlags.seeding = true
+    try {
+      await db.transaction('rw', db.bodyStats, db.tape, async () => {
+        for (const entry of mod.bodyStats ?? []) if (!(await db.bodyStats.get(entry.id))) await db.bodyStats.add(entry)
+        for (const entry of mod.tape ?? []) if (!(await db.tape.get(entry.id))) await db.tape.add(entry)
+      })
+    } finally {
+      syncFlags.seeding = false
+    }
+  }
+}
+
 let ready: Promise<void> | undefined
 
 /** Opens the local database and writes seed data only to a completely fresh catalog. */
 export function ensureSeeded(): Promise<void> {
   ready ??= db.open().then(async () => {
-    if (await db.exercises.count() !== 0) return
-    await db.transaction('rw', db.exercises, db.equipmentModels, db.routines, db.savedMeals, db.settings, async () => {
-      await db.exercises.bulkAdd(exercises)
-      await db.equipmentModels.bulkAdd(models)
-      await db.routines.bulkAdd(routines)
-      await db.savedMeals.bulkAdd(savedMeals)
-      await db.settings.add({ id: 'settings', ...settings })
-    })
+    if (await db.exercises.count() === 0) {
+      // Seed writes replicate with a floor timestamp so they never beat a real
+      // user edit already on the sync server (e.g. a customized calorie target).
+      syncFlags.seeding = true
+      try {
+        await db.transaction('rw', db.exercises, db.equipmentModels, db.routines, db.savedMeals, db.settings, async () => {
+          await db.exercises.bulkAdd(exercises)
+          await db.equipmentModels.bulkAdd(models)
+          await db.routines.bulkAdd(routines)
+          await db.savedMeals.bulkAdd(savedMeals)
+          await db.settings.add({ id: 'settings', ...settings })
+        })
+      } finally {
+        syncFlags.seeding = false
+      }
+    }
+    await seedLocal()
   })
   return ready
 }

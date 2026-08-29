@@ -108,6 +108,47 @@ export interface Settings {
   restSeconds: number
   bodyWeightLb?: number
   bodyWeightGoalLb?: number
+  /** entered once; lets quick weigh-ins auto-compute BMI */
+  heightIn?: number
+  bodyFatGoalPct?: number
+}
+
+/** One body-composition reading (e.g. a smart-scale weigh-in). All metrics optional. */
+export interface BodyStatEntry {
+  id: string
+  date: DayKey
+  /** epoch ms of the reading */
+  at: number
+  weightLb?: number
+  bmi?: number
+  bodyFatPct?: number
+  fatFreeWeightLb?: number
+  subcutaneousFatPct?: number
+  /** unitless index (scales report 1–59) */
+  visceralFat?: number
+  bodyWaterPct?: number
+  skeletalMusclePct?: number
+  muscleMassLb?: number
+  boneMassLb?: number
+  proteinPct?: number
+  bmrKcal?: number
+}
+
+/** Numeric metrics of a reading, for trend queries. */
+export type BodyMetricKey = Exclude<keyof BodyStatEntry, 'id' | 'date' | 'at'>
+
+export type TapeSite =
+  | 'neck' | 'shoulder' | 'chest' | 'waist' | 'abdomen' | 'hip'
+  | 'bicepL' | 'bicepR' | 'forearmL' | 'forearmR'
+  | 'thighL' | 'thighR' | 'calfL' | 'calfR'
+
+/** One tape-measurement session; inches per site, any subset. Waist–hip ratio is derived. */
+export interface TapeEntry {
+  id: string
+  date: DayKey
+  /** epoch ms of the session */
+  at: number
+  sites: Partial<Record<TapeSite, number>>
 }
 
 // ---------- derived / query results ----------
@@ -182,6 +223,16 @@ export interface DataAPI {
   getDayFoodStats(date: DayKey): Promise<DayFoodStats>
   listSavedMeals(): Promise<SavedMeal[]>
   saveSavedMeal(m: Omit<SavedMeal, 'id'> & { id?: string }): Promise<SavedMeal>
+
+  // body records
+  listBodyStats(limit?: number): Promise<BodyStatEntry[]>
+  addBodyStat(e: Omit<BodyStatEntry, 'id'>): Promise<BodyStatEntry>
+  deleteBodyStat(id: string): Promise<void>
+  getLatestBodyStat(): Promise<BodyStatEntry | undefined>
+  getBodyTrend(metric: BodyMetricKey, days: number): Promise<Array<{ at: number; value: number }>>
+  listTape(limit?: number): Promise<TapeEntry[]>
+  addTape(e: Omit<TapeEntry, 'id'>): Promise<TapeEntry>
+  deleteTape(id: string): Promise<void>
 
   // history / settings
   getWeekActivity(): Promise<WeekActivity>

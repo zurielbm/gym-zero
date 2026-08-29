@@ -73,11 +73,11 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
 
   if (!workout) {
     return (
-      <>
-        <h1 className="p-h1">No active workout</h1>
+      <div className="page">
+        <h1 className="p-h1">No active workout<span className="dot">.</span></h1>
         <p className="p-sub">Pick a routine to get going.</p>
-        <button className="big-btn" onClick={() => go({ name: 'routines' })}>Choose routine</button>
-      </>
+        <button className="big-btn" onClick={() => go({ name: 'routines' })}>Choose routine →</button>
+      </div>
     )
   }
 
@@ -143,103 +143,110 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   const curMuscles = currentId ? exercises.get(currentId)?.muscleGroups.join(' / ') : ''
 
   return (
-    <>
+    <div className="page wide">
       <div className="row" style={{ marginBottom: 8 }}>
         <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'routines' })}>
           ‹ {routine ? `${routine.emoji ?? ''} ${routine.name}`.trim() : 'Workout'}
+          {routine && ` · ${exerciseIds.filter((id) => sets.some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
         </button>
-        <span className="chip green" style={{ margin: 0 }}>{elapsed}</span>
+        <span className="num" style={{ fontSize: '1.2rem', color: 'var(--lime)', margin: 0 }}>{elapsed}</span>
       </div>
 
-      <h1 className="p-h1" style={{ fontSize: '1.25rem' }}>{curName}</h1>
-      <p className="p-sub" style={{ textTransform: 'capitalize' }}>
-        {curMuscles}
-        {currentMachine && (
-          <>
-            {' · '}
-            <a style={{ cursor: 'pointer', textDecoration: 'none' }}
-               onClick={() => go({ name: 'machine', machineId: currentMachine.id })}>
-              {currentMachine.nickname} ▸
-            </a>
-          </>
-        )}
-      </p>
+      <div className="split">
+        <div>
+          <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>{curName}</h1>
+          <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
+            {curMuscles}
+            {currentMachine && (
+              <>
+                {' · '}
+                <a style={{ cursor: 'pointer', textDecoration: 'none', fontWeight: 800 }}
+                   onClick={() => go({ name: 'machine', machineId: currentMachine.id })}>
+                  {currentMachine.nickname} ▸
+                </a>
+              </>
+            )}
+          </p>
 
-      {currentId && (
-        <div className="card">
-          <div className="set-head"><span>Set</span><span>lb</span><span>Reps</span><span /></div>
-          {Array.from({ length: rowCount }, (_, i) => {
-            const done = logged[i]
-            const prevHint = perf?.sets[i]
-            if (done) {
-              return (
-                <div className="set-row" key={i}>
-                  <b>{i + 1}</b>
-                  <div>
-                    <div className="set-in" style={{ background: 'transparent', borderColor: 'transparent' }}>{done.weightLb}</div>
-                    {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+          {currentId && (
+            <div className="card">
+              <div className="set-head"><span>Set</span><span style={{ textAlign: 'center' }}>lb</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
+              {Array.from({ length: rowCount }, (_, i) => {
+                const done = logged[i]
+                const prevHint = perf?.sets[i]
+                if (done) {
+                  return (
+                    <div className="set-row" key={i}>
+                      <b>{i + 1}</b>
+                      <div>
+                        <div className="logged-val">{done.weightLb}</div>
+                        {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+                      </div>
+                      <div className="logged-val">{done.reps}</div>
+                      <button className="set-done-btn done">✓</button>
+                    </div>
+                  )
+                }
+                const isNext = i === logged.length
+                const d = defaultFor(i)
+                return (
+                  <div className="set-row" key={i}>
+                    <b className={isNext ? '' : 'faint'}>{i + 1}</b>
+                    <div>
+                      <input
+                        className={`set-in${isNext ? '' : ' pending'}`}
+                        inputMode="decimal" value={d.w} placeholder="lb"
+                        onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, w: e.target.value } }))}
+                      />
+                      {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+                    </div>
+                    <input
+                      className={`set-in${isNext ? '' : ' pending'}`}
+                      inputMode="numeric" value={d.r} placeholder="reps"
+                      onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, r: e.target.value } }))}
+                    />
+                    <button className="set-done-btn" disabled={!isNext} onClick={() => logRow(i)}>✓</button>
                   </div>
-                  <div className="set-in" style={{ background: 'transparent', borderColor: 'transparent' }}>{done.reps}</div>
-                  <button className="set-done-btn done">✓</button>
-                </div>
-              )
-            }
-            const isNext = i === logged.length
-            const d = defaultFor(i)
+                )
+              })}
+            </div>
+          )}
+
+          {perf && (
+            <p className="lab" style={{ margin: '0 0 12px' }}>
+              Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
+              {perf.sets.map((s) => `${s.weightLb}×${s.reps}`).join(' · ')}
+            </p>
+          )}
+        </div>
+
+        <div className="side">
+          <p className="section-label" style={{ marginTop: 16 }}>Queue</p>
+          {exerciseIds.map((id) => {
+            const count = sets.filter((s) => s.exerciseId === id).length
+            const target = targetSets(id)
             return (
-              <div className="set-row" key={i}>
-                <b className={isNext ? '' : 'faint'}>{i + 1}</b>
-                <div>
-                  <input
-                    className={`set-in${isNext ? '' : ' pending'}`}
-                    inputMode="decimal" value={d.w} placeholder="lb"
-                    onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, w: e.target.value } }))}
-                  />
-                  {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+              <div
+                key={id}
+                className={`exercise-pill${id === currentId ? ' current' : ''}`}
+                onClick={() => switchExercise(id)}
+              >
+                <div className="row">
+                  <b>{exercises.get(id)?.name ?? id}</b>
+                  <span className="small">{count}/{target} sets</span>
                 </div>
-                <input
-                  className={`set-in${isNext ? '' : ' pending'}`}
-                  inputMode="numeric" value={d.r} placeholder="reps"
-                  onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, r: e.target.value } }))}
-                />
-                <button className="set-done-btn" disabled={!isNext} onClick={() => logRow(i)}>✓</button>
               </div>
             )
           })}
+
+          <div style={{ height: 14 }} />
+          <button className="big-btn blue" onClick={finish} disabled={sets.length === 0}>
+            Finish workout →
+          </button>
+          <div style={{ height: 8 }} />
+          <button className="ghost-btn danger" onClick={cancel}>Discard workout</button>
         </div>
-      )}
-
-      {perf && (
-        <p className="small" style={{ margin: '0 0 12px' }}>
-          Last time ({perf.workoutDate.slice(5).replace('-', '/')}):{' '}
-          {perf.sets.map((s) => `${s.weightLb}×${s.reps}`).join(' · ')}
-        </p>
-      )}
-
-      <p className="section-label">Exercises</p>
-      {exerciseIds.map((id) => {
-        const count = sets.filter((s) => s.exerciseId === id).length
-        const target = targetSets(id)
-        return (
-          <div
-            key={id}
-            className={`exercise-pill${id === currentId ? ' current' : ''}`}
-            onClick={() => switchExercise(id)}
-          >
-            <div className="row">
-              <b>{exercises.get(id)?.name ?? id}</b>
-              <span className="small">{count}/{target} sets</span>
-            </div>
-          </div>
-        )
-      })}
-
-      <div style={{ height: 8 }} />
-      <button className="big-btn blue" onClick={finish} disabled={sets.length === 0}>
-        Finish workout
-      </button>
-      <div style={{ height: 8 }} />
-      <button className="ghost-btn danger" onClick={cancel}>Discard workout</button>
-    </>
+      </div>
+    </div>
   )
 }

@@ -1,4 +1,4 @@
-# Gym Tracker
+# Gym Zero
 
 Local-first gym workout + food tracker built for LA Fitness training: routine-based
 set logging with previous weights pre-filled, machine QR scanning that resolves to
@@ -36,3 +36,13 @@ are not started.
 
 Camera QR scanning uses BarcodeDetector with a jsQR fallback and needs HTTPS or
 localhost; there's always a manual "paste the QR link" fallback on the scan screen.
+
+## Sync (self-hosted Convex)
+
+Optional: a self-hosted Convex backend keeps the durable copy of personal data
+and syncs it across devices (Dexie stays the offline store the UI reads; a
+replication layer in `app/src/data/sync.ts` pushes/pulls with last-write-wins).
+Build the app with `VITE_CONVEX_URL` set to enable it; without it the app is
+identical to the local-only build. Server functions live in `app/convex/`.
+Production runs from the single `docker-compose.yml` at the repo root (app +
+Convex backend + dashboard + function deploy job) — see `DEPLOY.md`.

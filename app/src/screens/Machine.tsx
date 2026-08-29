@@ -70,9 +70,9 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       setMachine(m)
     }
     return (
-      <>
+      <div className="page">
         <button className="back-link" onClick={() => go({ name: 'scan' })}>‹ Scanner</button>
-        <h1 className="p-h1" style={{ fontSize: '1.25rem' }}>
+        <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>
           {model
             ? `${model.manufacturer} ${model.modelName}`
             : qrUrl && /lfconnect\.com|lifefitness\.com/.test(qrUrl)
@@ -101,10 +101,10 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             </select>
           </div>
           <button className="big-btn" onClick={createMachine} disabled={!nickname.trim() || !exerciseId}>
-            Save my machine
+            Save my machine →
           </button>
         </div>
-      </>
+      </div>
     )
   }
 
@@ -125,7 +125,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   }
 
   return (
-    <>
+    <div className="page">
       <div className="row" style={{ marginBottom: 8 }}>
         <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'scan' })}>‹ Scanner</button>
         <button
@@ -136,8 +136,8 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
           {machine.favorite ? '★' : '☆'}
         </button>
       </div>
-      <h1 className="p-h1" style={{ fontSize: '1.25rem' }}>{machine.nickname}</h1>
-      <p className="p-sub">
+      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>{machine.nickname}</h1>
+      <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
         {model ? `${model.manufacturer} · ${model.modelName}` : ex?.name ?? ''}
       </p>
 
@@ -169,14 +169,21 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       {perf && (
         <div className="card">
           <div className="row">
-            <b style={{ fontSize: '0.85rem' }}>Last time</b>
-            <span className="small">{perf.workoutDate.slice(5).replace('-', '/')}</span>
+            <span className="lab">Your numbers here</span>
+            <span className="lab">{perf.workoutDate.slice(5).replace('-', '.')}</span>
           </div>
-          <span className="small">{perf.sets.map((s) => `${s.weightLb}×${s.reps}`).join(' · ')}</span>
+          <div style={{ display: 'flex', gap: 22, marginTop: 8 }}>
+            {perf.sets.map((s, i) => (
+              <span key={i}>
+                <span className="num" style={{ fontSize: '1.3rem', display: 'block' }}>{s.weightLb}×{s.reps}</span>
+                <span className="lab">Set {i + 1}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
-      <button className="big-btn" onClick={logSets}>Log sets on this machine</button>
-    </>
+      <button className="big-btn" onClick={logSets}>Log sets on this machine →</button>
+    </div>
   )
 }

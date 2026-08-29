@@ -90,15 +90,17 @@ export function ScanScreen() {
   }
 
   return (
-    <>
+    <div className="page">
       <button
         className="back-link"
         onClick={() => go(activeWorkout ? { name: 'workout' } : { name: 'routines' })}
       >
         ‹ Back
       </button>
-      <h1 className="p-h1" style={{ fontSize: '1.25rem' }}>Scan machine</h1>
-      <p className="p-sub">Point at the QR sticker on the machine</p>
+      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan machine<span className="dot">.</span></h1>
+      <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
+        Point at the QR sticker on the machine
+      </p>
 
       <div className="viewfinder">
         <video ref={videoRef} muted playsInline style={{ display: cameraOn ? 'block' : 'none' }} />
@@ -121,7 +123,7 @@ export function ScanScreen() {
                 {found.url}
               </span>
             </div>
-            <span style={{ color: 'var(--accent)', fontWeight: 900 }}>›</span>
+            <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>
           </div>
         )}
       </div>
@@ -149,6 +151,6 @@ export function ScanScreen() {
         Known code → opens the machine instantly.<br />
         Unknown code → you name &amp; map it once, remembered forever.
       </p>
-    </>
+    </div>
   )
 }

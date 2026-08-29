@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type {
-  EquipmentModel, Exercise, FoodEntry, GymMachine, Routine, SavedMeal, Settings, Workout, WorkoutSet,
+  BodyStatEntry, EquipmentModel, Exercise, FoodEntry, GymMachine, Routine, SavedMeal, Settings, TapeEntry, Workout, WorkoutSet,
 } from '../types'
 
 export interface EquipmentModelRecord extends EquipmentModel {
@@ -17,6 +17,21 @@ interface SettingsRecord extends Settings {
   id: 'settings'
 }
 
+/** Pending local change awaiting replication to the sync server. */
+export interface OutboxEntry {
+  /** `${table}:${id}` */
+  key: string
+  table: string
+  id: string
+  /** full row as stored locally; undefined = tombstone */
+  doc?: unknown
+  deleted: boolean
+  updatedAt: number
+}
+
+/** Cross-module flags the sync hooks read at write time (avoids import cycles). */
+export const syncFlags = { seeding: false }
+
 class GymTrackerDatabase extends Dexie {
   exercises!: Table<Exercise, string>
   equipmentModels!: Table<EquipmentModelRecord, string>
@@ -26,7 +41,10 @@ class GymTrackerDatabase extends Dexie {
   sets!: Table<WorkoutSet, string>
   food!: Table<FoodEntry, string>
   savedMeals!: Table<SavedMeal, string>
+  bodyStats!: Table<BodyStatEntry, string>
+  tape!: Table<TapeEntry, string>
   settings!: Table<SettingsRecord, 'settings'>
+  outbox!: Table<OutboxEntry, string>
 
   constructor() {
     super('gym-tracker')
@@ -40,6 +58,13 @@ class GymTrackerDatabase extends Dexie {
       food: 'id,date',
       savedMeals: 'id',
       settings: 'id',
+    })
+    this.version(2).stores({
+      outbox: 'key',
+    })
+    this.version(3).stores({
+      bodyStats: 'id,date,at',
+      tape: 'id,date,at',
     })
   }
 }

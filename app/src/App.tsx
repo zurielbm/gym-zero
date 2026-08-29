@@ -3,8 +3,8 @@ import api from './data'
 import type { Exercise, Settings, Workout } from './types'
 import { Ctx } from './AppContext'
 import type { Screen } from './AppContext'
-import { TabBar } from './components/TabBar'
-import { ScanIcon } from './components/icons'
+import { SYNC_APPLIED_EVENT } from './data/sync'
+import { TabBar, TopNav } from './components/TabBar'
 import { HomeScreen } from './screens/Home'
 import { RoutinesScreen } from './screens/Routines'
 import { WorkoutScreen } from './screens/Workout'
@@ -12,9 +12,10 @@ import { ScanScreen } from './screens/Scan'
 import { MachineScreen } from './screens/Machine'
 import { FoodScreen } from './screens/Food'
 import { HistoryScreen } from './screens/History'
+import { BodyScreen } from './screens/Body'
 import { SummaryScreen } from './screens/Summary'
 
-const fabScreens = new Set(['routines', 'workout'])
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
@@ -22,6 +23,7 @@ export default function App() {
   const [exercises, setExercises] = useState<Map<string, Exercise> | null>(null)
   const [activeWorkout, setActiveWorkout] = useState<Workout | undefined>(undefined)
   const [restLeft, setRestLeft] = useState<number | null>(null)
+  const [restTotal, setRestTotal] = useState(90)
   const restTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export default function App() {
       if (restTimer.current) clearInterval(restTimer.current)
       const total = seconds ?? settings?.restSeconds ?? 90
       const endsAt = Date.now() + total * 1000
+      setRestTotal(total)
       setRestLeft(total)
       restTimer.current = setInterval(() => {
         const left = Math.round((endsAt - Date.now()) / 1000)
@@ -70,6 +73,13 @@ export default function App() {
     setSettings(await api.getSettings())
   }, [])
 
+  // pulled sync records land in Dexie behind React's back; re-read shared state
+  useEffect(() => {
+    const onApplied = () => { void refreshSettings() }
+    window.addEventListener(SYNC_APPLIED_EVENT, onApplied)
+    return () => window.removeEventListener(SYNC_APPLIED_EVENT, onApplied)
+  }, [refreshSettings])
+
   if (!settings || !exercises) {
     return <div className="shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
       <p className="small">Loading…</p>
@@ -84,6 +94,7 @@ export default function App() {
       }}
     >
       <div className="shell">
+        <TopNav />
         <div className="screen" key={JSON.stringify(screen)}>
           {screen.name === 'home' && <HomeScreen />}
           {screen.name === 'routines' && <RoutinesScreen />}
@@ -94,25 +105,19 @@ export default function App() {
           )}
           {screen.name === 'food' && <FoodScreen />}
           {screen.name === 'history' && <HistoryScreen />}
+          {screen.name === 'body' && <BodyScreen />}
           {screen.name === 'summary' && <SummaryScreen workoutId={screen.workoutId} />}
         </div>
 
         {restLeft !== null && screen.name === 'workout' && (
           <div className="rest-toast">
-            <div>
-              <span className="small" style={{ display: 'block' }}>Rest timer</span>
-              <b>{restLeft}</b>
+            <span className="lab">Rest timer</span>
+            <div className="bar">
+              <i style={{ width: `${Math.max(0, Math.min(100, (restLeft / restTotal) * 100))}%`, transition: 'width 0.25s linear' }} />
             </div>
+            <b>{fmtClock(restLeft)}</b>
             <button className="ghost-btn" onClick={stopRest}>Skip</button>
           </div>
-        )}
-
-        {fabScreens.has(screen.name) && (
-          <button
-            className={`fab${restLeft !== null && screen.name === 'workout' ? ' raised' : ''}`}
-            title="Scan machine QR" onClick={() => go({ name: 'scan' })}>
-            <ScanIcon />
-          </button>
         )}
 
         <TabBar />

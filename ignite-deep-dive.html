@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan(gy): Ignite — Design Deep Dive</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 76 76'%3E%3Crect width='76' height='76' rx='16' fill='%230d1117'/%3E%3Cpath fill='%23ffffff' d='M20,17L43.25,17L56,29.75L56,59L20,59ZM24,21L24,55L52,55L52,34L39,34L39,21ZM43,22.25L43,30L50.75,30ZM30,48L34,48L34,39.5L37,42.5L37,37.75L32,32.75L27,38.25L27,42.5L30,39.5ZM38,49L38,53L26,53L26,49Z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ================= page chrome (speaks Ignite itself) ================= */
+:root {
+  --bg: #121214; --surf: #18181b; --surf2: #1e1e22; --line: #2a2a2f;
+  --ink: #f4f4f2; --mut: #8b8b86; --lime: #d8f34f; --danger: #ff5a3d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, sans-serif; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+.anton { font-family: Anton, "Arial Narrow", sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: 0.01em; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 52px 24px 100px; }
+h1 { font-family: Anton, sans-serif; font-weight: 400; text-transform: uppercase; font-size: 3rem; line-height: 0.95; margin: 0 0 10px; letter-spacing: 0.01em; }
+h1 .lm { color: var(--lime); }
+h2 { font-family: Anton, sans-serif; font-weight: 400; text-transform: uppercase; font-size: 1.7rem; margin: 78px 0 4px; letter-spacing: 0.02em; border-top: 1px solid var(--line); padding-top: 22px; }
+h2 .idx { color: var(--lime); margin-right: 10px; }
+h3 { font-size: 1rem; margin: 30px 0 8px; font-weight: 800; }
+.kick { color: var(--lime); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 14px; }
+.lede { color: var(--mut); max-width: 740px; margin: 0 0 6px; }
+p { max-width: 760px; }
+.muted { color: var(--mut); }
+code { background: var(--surf2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 0.82em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
+.toc a { color: var(--ink); text-decoration: none; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 14px; background: var(--surf); border: 1px solid var(--line); }
+.toc a:hover { border-color: var(--lime); color: var(--lime); }
+.panel { background: var(--surf); border: 1px solid var(--line); padding: 22px 24px; margin: 18px 0; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.86rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--mut); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.framelabel { text-align: center; font-size: 0.68rem; color: var(--mut); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; margin: 12px 0 0; }
+.mockrow { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 26px 0 8px; justify-content: flex-start; }
+.mockcol { flex: 0 0 auto; }
+.mockcol.grow { flex: 1 1 480px; min-width: 320px; }
+
+/* ================= device frames ================= */
+.phone { width: 288px; border-radius: 40px; padding: 10px; background: #050506; border: 1px solid #313136; box-shadow: 0 26px 60px rgba(0,0,0,0.55); }
+.phone .notch { width: 94px; height: 20px; background: #050506; border-radius: 0 0 14px 14px; margin: 0 auto -20px; position: relative; z-index: 9; }
+.phone .scr { border-radius: 31px; overflow: hidden; height: 588px; position: relative; display: flex; flex-direction: column; background: #0c0c0d; }
+.browser { width: 100%; overflow: hidden; border: 1px solid #313136; box-shadow: 0 26px 60px rgba(0,0,0,0.55); background: #050506; border-radius: 12px; }
+.browser .bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #101013; border-bottom: 1px solid #232327; }
+.browser .bar i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.browser .bar .url { flex: 1; margin-left: 10px; background: #1a1a1e; border-radius: 5px; font-size: 0.62rem; color: #8b8b86; padding: 3px 10px; font-family: ui-monospace, Menlo, monospace; }
+.browser .view { height: 540px; overflow: hidden; position: relative; }
+
+/* ================= IGNITE mock language ================= */
+.ig { --bg3: #0c0c0d; --s3: #131316; --ink3: #f4f4f2; --m3: #82827e; --lm: #d8f34f; --l3: #232327; --dg: #ff5a3d;
+      background: var(--bg3); color: var(--ink3); font-family: Inter, sans-serif; }
+.ig .num { font-family: Anton, sans-serif; font-weight: 400; letter-spacing: 0.01em; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.ig .disp { font-family: Anton, sans-serif; font-weight: 400; text-transform: uppercase; line-height: 0.95; letter-spacing: 0.01em; }
+.ig .lab { font-size: 7.5px; color: var(--m3); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.ig .lab.lm { color: var(--lm); }
+.ig .hl { border-top: 1px solid var(--l3); }
+.ig .lbtn { background: var(--lm); color: #101204; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; border: 0; border-radius: 0; font-family: Inter, sans-serif; }
+.ig .gbtn { background: transparent; color: var(--ink3); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid var(--l3); border-radius: 0; }
+.ig .tkt { display: inline-block; font-size: 7px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 7px; }
+.ig .tkt.lm { background: var(--lm); color: #101204; }
+.ig .tkt.ol { border: 1px solid var(--lm); color: var(--lm); }
+.ig .tkt.dim { border: 1px solid var(--l3); color: var(--m3); }
+.ig .bar3 { height: 3px; background: #1e1e21; }
+.ig .bar3 i { display: block; height: 100%; background: var(--lm); }
+.ig .inbox { border: 1px solid var(--l3); background: var(--s3); color: var(--ink3); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.ig .tabs { display: flex; justify-content: space-around; align-items: center; padding: 10px 0 18px; border-top: 1px solid var(--l3); background: var(--bg3); font-size: 7px; font-weight: 900; letter-spacing: 0.1em; color: var(--m3); }
+.ig .tabs .on { color: var(--lm); }
+.ig .scankey { width: 38px; height: 38px; background: var(--lm); color: #101204; display: grid; place-items: center; font-size: 13px; margin-top: -16px; }
+.ig .topnav { display: flex; justify-content: space-between; align-items: center; padding: 13px 22px; border-bottom: 1px solid var(--l3); }
+.ig .topnav .links { display: flex; gap: 22px; font-size: 8.5px; font-weight: 900; letter-spacing: 0.12em; color: var(--m3); }
+.ig .topnav .links .on { color: var(--ink3); border-bottom: 2px solid var(--lm); padding-bottom: 3px; }
+
+/* swatch specimens */
+.swgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+.swcard { border: 1px solid var(--line); background: var(--surf); }
+.swcard .chip { height: 64px; }
+.swcard .meta { padding: 8px 12px; font-size: 0.68rem; }
+.swcard .meta b { display: block; font-size: 0.74rem; }
+.swcard .meta span { color: var(--mut); font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; }
+
+/* type specimen */
+.spec { border: 1px solid var(--line); background: #0c0c0d; padding: 26px 28px; margin: 16px 0; overflow: hidden; }
+.spec .row { display: flex; align-items: baseline; gap: 20px; border-top: 1px solid #232327; padding: 12px 0; }
+.spec .row:first-child { border-top: 0; }
+.spec .tag { width: 150px; flex-shrink: 0; font-size: 0.64rem; color: var(--mut); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* kit grid */
+.kit { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin: 18px 0; }
+.kitcell { border: 1px solid var(--line); background: #0c0c0d; padding: 18px; }
+.kitcell .kl { font-size: 0.62rem; color: var(--mut); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
+
+/* motion demos */
+@keyframes countup { from { transform: translateY(60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fillx { from { width: 0; } to { width: 76%; } }
+@keyframes prflash { 0% { background: var(--lime); color: #101204; } 100% { background: transparent; color: var(--lime); } }
+.demo-num.play { display: inline-block; animation: countup 0.42s cubic-bezier(0.2, 0.9, 0.25, 1); }
+.demo-bar.play i { animation: fillx 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) forwards; }
+.demo-pr.play { animation: prflash 0.9s ease-out forwards; }
+.replay { background: none; border: 1px solid var(--line); color: var(--mut); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; cursor: pointer; margin-top: 12px; font-family: Inter, sans-serif; }
+.replay:hover { border-color: var(--lime); color: var(--lime); }
+
+/* timeline + qa reuse */
+.timeline { border-left: 2px solid var(--line); margin: 20px 0 8px 8px; padding-left: 26px; }
+.tl-item { position: relative; padding-bottom: 24px; }
+.tl-item::before { content: ""; position: absolute; left: -33px; top: 6px; width: 12px; height: 12px; background: var(--bg); border: 3px solid var(--lime); }
+.tl-item ul { margin: 6px 0 0; padding-left: 18px; color: var(--mut); font-size: 0.88rem; }
+.tl-item ul li { margin-bottom: 4px; }
+.tl-item ul b { color: var(--ink); font-weight: 600; }
+.qa { border-left: 3px solid var(--lime); background: var(--surf); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 20px 24px; margin: 16px 0; }
+.qa h3 { margin: 0 0 6px; color: var(--lime); }
+.qa .why { font-size: 0.85rem; color: var(--mut); }
+.qa .why b { color: var(--ink); }
+
+@media (max-width: 720px) {
+  .wrap { padding: 34px 14px 70px; }
+  h1 { font-size: 2.1rem; }
+  .phone { margin: 0 auto; display: block; }
+  .mockcol { width: 100%; }
+  .spec .row { flex-direction: column; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="kick">Plan · Gym Tracker · Design direction locked</p>
+<h1>Ignite<span class="lm">.</span><br>Design deep dive</h1>
+<p class="lede">The full Ignite system: tokens, typography, motion, every one of the 8 screens in mobile, the three key desktop views, the component kit, and how the style survives dense screens. Everything here maps 1:1 onto the phased plan from the first document — this page is what Phases A–D build.</p>
+<div class="toc">
+  <a href="#principles">01 Principles</a>
+  <a href="#system">02 System</a>
+  <a href="#mobile">03 Mobile · 8 screens</a>
+  <a href="#desktop">04 Desktop</a>
+  <a href="#kit">05 Component kit</a>
+  <a href="#density">06 Density &amp; edges</a>
+  <a href="#build">07 Build notes</a>
+  <a href="#qa">08 Q&amp;A</a>
+</div>
+
+<!-- ============ 01 PRINCIPLES ============ -->
+<h2 id="principles"><span class="idx">01</span>Principles</h2>
+<p class="lede">Five rules that decide every screen. When a layout question comes up during the build, the answer is whichever option follows more of these.</p>
+<div class="panel" style="padding:0;">
+  <table style="margin:0;">
+    <tr><td style="width:220px;"><b>Data is the decoration</b></td><td class="muted">No illustrations, no gradients, no glass. The big numerals — streak, volume, PRs — are the visual interest. If a screen looks empty, make the numbers bigger, don't add ornament.</td></tr>
+    <tr><td><b>One accent, spent carefully</b></td><td class="muted">Lime marks exactly three things: the primary action, the active nav item, and achievement (PRs, completed days). Everything else is ink/muted/hairline. If lime appears more than ~3 times on a screen, something is misclassified.</td></tr>
+    <tr><td><b>Rules, not cards</b></td><td class="muted">Content is grouped by 1px hairlines and whitespace, never boxed. The only filled surfaces are inputs and the two floating elements (rest bar, scan key). This is also why Ignite is the cheapest CSS of the three directions.</td></tr>
+    <tr><td><b>Two typefaces, two jobs</b></td><td class="muted">The condensed display face (Anton on this page) does numerals and screen titles only. Inter does everything readable: body, inputs, buttons, food names, notes. Nothing set in Anton is ever longer than ~3 words.</td></tr>
+    <tr><td><b>Flat and fast</b></td><td class="muted">Zero border-radius on structure (inputs get 0–2px), no shadows, and motion under 200ms. The app should feel like flipping scoreboard digits, not like floating panels.</td></tr>
+  </table>
+</div>
+
+<!-- ============ 02 SYSTEM ============ -->
+<h2 id="system"><span class="idx">02</span>Design system</h2>
+
+<h3>Color tokens</h3>
+<p class="muted" style="font-size:0.9rem;">Nine tokens total. <code>--lime</code> is the only saturated color; <code>--danger</code> appears exclusively on destructive actions (discard workout, delete entry).</p>
+<div class="swgrid">
+  <div class="swcard"><div class="chip" style="background:#0c0c0d;"></div><div class="meta"><b>--bg</b><span>#0c0c0d</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#131316;"></div><div class="meta"><b>--surface</b><span>#131316 · inputs, rest bar</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#1e1e21;"></div><div class="meta"><b>--track</b><span>#1e1e21 · empty bars</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#232327;"></div><div class="meta"><b>--hairline</b><span>#232327</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#f4f4f2;"></div><div class="meta"><b>--ink</b><span>#f4f4f2</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#82827e;"></div><div class="meta"><b>--muted</b><span>#82827e</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#3a3a3e;"></div><div class="meta"><b>--ghost</b><span>#3a3a3e · outline numerals</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#d8f34f;"></div><div class="meta"><b>--lime</b><span>#d8f34f · on-lime ink #101204</span></div></div>
+  <div class="swcard"><div class="chip" style="background:#ff5a3d;"></div><div class="meta"><b>--danger</b><span>#ff5a3d · destructive only</span></div></div>
+</div>
+<p class="muted" style="font-size:0.85rem;">Contrast: ink on bg 17.9:1, muted on bg 5.6:1, lime on bg 13.4:1, on-lime ink on lime 11.9:1 — everything clears WCAG AA at the sizes used, including the 8px tracking labels.</p>
+
+<h3>Typography</h3>
+<p class="muted" style="font-size:0.9rem;">Display: <b style="color:var(--ink);">Anton</b> (free, one 400 weight, ~48KB woff2, self-hosted). Body: <b style="color:var(--ink);">Inter</b> (already the app font — no change). Anton's digits are effectively monospaced at display sizes, which keeps the workout clock and set numbers from jittering.</p>
+<div class="spec">
+  <div class="row"><span class="tag">Display XL · 64/0.9</span><span class="anton" style="font-size:64px; line-height:0.9;">1,840<span style="color:var(--lime);">.</span></span></div>
+  <div class="row"><span class="tag">Display L · 40</span><span class="anton" style="font-size:40px;">Evening, Zuriel</span></div>
+  <div class="row"><span class="tag">Display M · 26 · screen titles</span><span class="anton" style="font-size:26px;">Chest Press</span></div>
+  <div class="row"><span class="tag">Stat · 22 · tabular</span><span class="anton" style="font-size:22px;">0123456789 · 32:14</span></div>
+  <div class="row"><span class="tag">Body · Inter 14/600</span><span style="font-size:14px; font-weight:600;">Previous weights load automatically — 155 lb × 10</span></div>
+  <div class="row"><span class="tag">Label · Inter 10/800 +14%</span><span style="font-size:10px; font-weight:800; letter-spacing:0.14em; color:var(--mut); text-transform:uppercase;">Calories · This week · Up next</span></div>
+</div>
+<p class="muted" style="font-size:0.85rem;"><b style="color:var(--ink);">The caps rule:</b> Anton and the tracked labels are all-caps; Inter body copy is sentence case. Food names, routine exercise lists, notes, and machine nicknames stay lowercase-readable — caps are for structure, never for content you scan repeatedly.</p>
+
+<h3>Shape &amp; space</h3>
+<p class="muted" style="font-size:0.9rem;">Radius 0 everywhere except inputs (2px). Hairlines are 1px <code>--hairline</code>; progress tracks 3px tall on mobile, 4px on desktop. Spacing scale: 4 / 8 / 12 / 16 / 24 / 40. Touch targets stay ≥ 44px even where the visual is a 3px bar (padded hit areas).</p>
+
+<h3>Motion</h3>
+<div class="kit">
+  <div class="kitcell">
+    <div class="kl">Numeral count-in · 420ms</div>
+    <span class="anton demo-num" id="d-num" style="font-size:44px; display:inline-block;">12.4K</span>
+    <div style="font-size:0.62rem; color:var(--mut); font-weight:800; letter-spacing:0.1em; margin-top:2px;">LB VOLUME</div>
+    <button class="replay" onclick="replay('d-num')">↻ Replay</button>
+  </div>
+  <div class="kitcell">
+    <div class="kl">Bar fill · 600ms, once per screen</div>
+    <div style="font-size:0.68rem; color:var(--mut); font-weight:800; letter-spacing:0.1em; margin-bottom:8px;">CALORIES 1,840 / 2,400</div>
+    <div class="demo-bar play" id="d-bar" style="height:4px; background:#1e1e21;"><i style="display:block; height:100%; width:76%; background:var(--lime);"></i></div>
+    <button class="replay" onclick="replay('d-bar')">↻ Replay</button>
+  </div>
+  <div class="kitcell">
+    <div class="kl">PR flash · 900ms on log</div>
+    <span class="demo-pr" id="d-pr" style="display:inline-block; border:1px solid var(--lime); color:var(--lime); font-weight:900; font-size:0.72rem; letter-spacing:0.1em; padding:6px 12px;">PR ★ 160 × 8</span>
+    <button class="replay" onclick="replay('d-pr')" style="display:block;">↻ Replay</button>
+  </div>
+</div>
+<p class="muted" style="font-size:0.85rem;">Screen transitions: 140ms horizontal wipe (no fade-drift like today). The rest bar drains linearly — no easing, it's a countdown. All animation is disabled under <code>prefers-reduced-motion</code> except the rest bar's width (it's information, not decoration).</p>
+
+<!-- ============ 03 MOBILE ============ -->
+<h2 id="mobile"><span class="idx">03</span>Mobile — all 8 screens</h2>
+<p class="lede">The train flow first (Routines → Workout → Scan → Machine → Summary), then Home, Fuel, and Stats. Every element shown exists in the current app — same features, re-typeset.</p>
+
+<h3>The train flow</h3>
+<div class="mockrow">
+
+  <!-- ROUTINES -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div class="lab">‹ HOME</div>
+        <div class="disp" style="font-size:26px; margin-top:8px;">Choose<br>routine<span style="color:var(--lm);">.</span></div>
+        <div class="lab" style="margin-top:4px;">PREVIOUS WEIGHTS LOAD AUTOMATICALLY</div>
+        <div class="hl" style="margin-top:14px; padding:11px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="disp" style="font-size:15px;">Push Day</span>
+            <span class="tkt lm">UP NEXT</span>
+          </div>
+          <div style="font-size:9px; color:var(--m3); margin-top:4px; line-height:1.5;">Incline Press · Pec Fly · Lat Raise · Chest Press · Shoulder Press · Cable Fly</div>
+          <div style="display:flex; justify-content:space-between; margin-top:6px;"><span class="lab">6 EXERCISES</span><span class="lab">LAST · 3D AGO</span></div>
+        </div>
+        <div class="hl" style="padding:11px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="disp" style="font-size:15px;">Pull Day</span>
+          </div>
+          <div style="font-size:9px; color:var(--m3); margin-top:4px;">Lat Pulldown · Seated Row · Rear Delt · Curl</div>
+          <div style="display:flex; justify-content:space-between; margin-top:6px;"><span class="lab">4 EXERCISES</span><span class="lab">LAST · YESTERDAY</span></div>
+        </div>
+        <div class="hl" style="padding:11px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="disp" style="font-size:15px;">Leg Day</span>
+          </div>
+          <div style="font-size:9px; color:var(--m3); margin-top:4px;">Leg Press · Extension · Curl · Calf Raise</div>
+          <div style="display:flex; justify-content:space-between; margin-top:6px;"><span class="lab">4 EXERCISES</span><span class="lab">LAST · TODAY</span></div>
+        </div>
+        <button class="gbtn" style="width:100%; padding:12px; font-size:9px; margin-top:14px;">＋ Start empty workout</button>
+      </div>
+      <div class="tabs"><span>HOME</span><span class="on">TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Routines · LRU order, “up next” ticket</p>
+  </div>
+
+  <!-- WORKOUT -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <span class="lab">‹ PUSH DAY · 4/6</span>
+          <span class="num" style="font-size:17px; color:var(--lm);">32:14</span>
+        </div>
+        <div class="disp" style="font-size:24px; margin-top:8px;">Chest Press</div>
+        <div style="font-size:8.5px; color:var(--m3); margin-top:2px;">CHEST / TRICEPS · <span style="color:var(--ink3); font-weight:700;">MACHINE #12 — BY THE WINDOWS ▸</span></div>
+        <div class="hl" style="margin-top:12px; padding-top:6px;">
+          <div style="display:grid; grid-template-columns:20px 1fr 1fr 34px; gap:8px; padding:4px 0;" class="lab"><span>SET</span><span>LB</span><span>REPS</span><span></span></div>
+          <div style="display:grid; grid-template-columns:20px 1fr 1fr 34px; gap:8px; align-items:center; padding:6px 0;" class="hl">
+            <span class="num" style="font-size:13px; color:var(--m3);">1</span>
+            <div><span class="num" style="font-size:16px;">155</span><div style="font-size:7px; color:#5c5c58;">PREV 155×10</div></div>
+            <span class="num" style="font-size:16px;">10</span>
+            <span style="width:26px; height:26px; background:var(--lm); color:#101204; display:grid; place-items:center; font-size:11px; font-weight:900;">✓</span>
+          </div>
+          <div style="display:grid; grid-template-columns:20px 1fr 1fr 34px; gap:8px; align-items:center; padding:6px 0;" class="hl">
+            <span class="num" style="font-size:13px; color:var(--m3);">2</span>
+            <div><span class="num" style="font-size:16px;">160</span><div style="font-size:7px; color:#5c5c58;">PREV 155×9</div></div>
+            <span class="num" style="font-size:16px;">8</span>
+            <span style="width:26px; height:26px; background:var(--lm); color:#101204; display:grid; place-items:center; font-size:11px; font-weight:900;">✓</span>
+          </div>
+          <div style="display:grid; grid-template-columns:20px 1fr 1fr 34px; gap:8px; align-items:center; padding:6px 0;" class="hl">
+            <span class="num" style="font-size:13px;">3</span>
+            <div class="inbox" style="padding:6px 4px; font-size:11px;">160<span style="color:#5c5c58; font-size:7px; display:block; font-weight:600;">PREV 155×8</span></div>
+            <div class="inbox" style="padding:9px 4px; font-size:11px;">8</div>
+            <span style="width:26px; height:26px; border:1px solid var(--lm); color:var(--lm); display:grid; place-items:center; font-size:11px; font-weight:900;">✓</span>
+          </div>
+        </div>
+        <div class="lab" style="margin-top:8px;">LAST TIME · 155×10 · 155×9 · 155×8</div>
+        <div class="hl" style="margin-top:12px; padding-top:8px;">
+          <div class="lab" style="margin-bottom:6px;">QUEUE</div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;"><b style="color:var(--lm);">▸ Chest Press</b><span class="num" style="font-size:11px;">2/3</span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;" class="hl"><span>Shoulder Press</span><span class="num" style="font-size:11px; color:var(--m3);">0/3</span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;" class="hl"><span>Cable Fly</span><span class="num" style="font-size:11px; color:var(--m3);">0/3</span></div>
+        </div>
+        <button class="lbtn" style="width:100%; padding:12px; font-size:11px; margin-top:12px;">Finish workout →</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:9px 18px; background:var(--s3); border-top:1px solid var(--l3);">
+        <span class="lab" style="flex-shrink:0;">REST</span>
+        <div class="bar3" style="flex:1;"><i style="width:53%;"></i></div>
+        <span class="num" style="font-size:15px; color:var(--lm);">0:47</span>
+        <span class="lab" style="color:var(--ink3);">SKIP</span>
+      </div>
+      <div class="tabs"><span>HOME</span><span class="on">TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Workout · logger + queue + rest bar</p>
+  </div>
+
+  <!-- SCAN -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div class="lab">‹ BACK</div>
+        <div class="disp" style="font-size:24px; margin-top:8px;">Scan<span style="color:var(--lm);">.</span></div>
+        <div class="lab" style="margin-top:2px;">POINT AT THE MACHINE'S QR PLATE</div>
+        <div style="position:relative; height:300px; margin-top:14px; background:radial-gradient(120px 90px at 60% 40%, #202024 0%, transparent 70%), #121215; border:1px solid var(--l3); overflow:hidden;">
+          <i style="position:absolute; top:26px; left:26px; width:26px; height:26px; border-top:3px solid var(--lm); border-left:3px solid var(--lm);"></i>
+          <i style="position:absolute; top:26px; right:26px; width:26px; height:26px; border-top:3px solid var(--lm); border-right:3px solid var(--lm);"></i>
+          <i style="position:absolute; bottom:26px; left:26px; width:26px; height:26px; border-bottom:3px solid var(--lm); border-left:3px solid var(--lm);"></i>
+          <i style="position:absolute; bottom:26px; right:26px; width:26px; height:26px; border-bottom:3px solid var(--lm); border-right:3px solid var(--lm);"></i>
+          <i style="position:absolute; left:34px; right:34px; top:48%; height:2px; background:linear-gradient(90deg, transparent, var(--lm), transparent); box-shadow:0 0 12px rgba(216,243,79,0.6);"></i>
+          <div style="position:absolute; left:10px; right:10px; bottom:10px; background:var(--lm); color:#101204; padding:9px 12px; display:flex; justify-content:space-between; align-items:center;">
+            <div><div style="font-size:7px; font-weight:900; letter-spacing:0.1em;">MATCH — LIFE FITNESS</div><div style="font-size:11px; font-weight:900;">CHEST PRESS · INSIGNIA</div></div>
+            <span style="font-weight:900; font-size:14px;">→</span>
+          </div>
+        </div>
+        <div class="lab" style="text-align:center; margin-top:12px;">CAMERA BLOCKED? <span style="color:var(--ink3);">PASTE THE QR LINK</span></div>
+        <div class="inbox" style="margin-top:8px; padding:9px; font-size:9px; color:var(--m3); text-align:left;">https://lfconnect.com/qr/…</div>
+      </div>
+      <div class="tabs"><span>HOME</span><span>TRAIN</span><span class="scankey" style="outline:2px solid var(--lm); outline-offset:2px;">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Scan · match ticket slides up on hit</p>
+  </div>
+
+  <!-- MACHINE -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div style="display:flex; justify-content:space-between;"><span class="lab">‹ SCANNER</span><span style="color:var(--lm); font-size:11px;">★</span></div>
+        <div class="disp" style="font-size:22px; margin-top:8px;">Chest Press</div>
+        <div style="font-size:8.5px; color:var(--m3); margin-top:2px;">LIFE FITNESS INSIGNIA · <span style="color:var(--ink3); font-weight:700;">“BY THE WINDOWS”</span></div>
+        <div style="position:relative; margin-top:12px; aspect-ratio:16/9; background:linear-gradient(150deg,#1c1c20,#101013); border:1px solid var(--l3); display:grid; place-items:center;">
+          <div style="width:40px; height:40px; background:var(--lm); display:grid; place-items:center; color:#101204; font-size:13px; padding-left:3px;">▶</div>
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:14px 10px 6px; font-size:7.5px; color:#c9c9c4; background:linear-gradient(transparent, rgba(5,5,6,0.9)); font-weight:700; letter-spacing:0.06em;">HOW TO — OFFICIAL LIFE FITNESS SETUP &amp; FORM</div>
+        </div>
+        <div class="hl" style="margin-top:14px; padding-top:10px;">
+          <div class="lab">YOUR NUMBERS ON THIS MACHINE</div>
+          <div style="display:flex; gap:20px; margin-top:8px;">
+            <div><div class="num" style="font-size:22px;">160<span style="font-size:10px; color:var(--m3);"> LB</span></div><div class="lab">BEST</div></div>
+            <div><div class="num" style="font-size:22px;">155×10</div><div class="lab">LAST SET 1</div></div>
+            <div><div class="num" style="font-size:22px;">12</div><div class="lab">SESSIONS</div></div>
+          </div>
+        </div>
+        <div class="hl" style="margin-top:12px; padding-top:8px;">
+          <div class="lab" style="margin-bottom:4px;">SETTINGS THAT WORKED</div>
+          <div style="font-size:9.5px; color:var(--m3);">Seat 4 · grip mid · “start light, drop-set last”</div>
+        </div>
+        <button class="lbtn" style="width:100%; padding:12px; font-size:11px; margin-top:14px;">Log a set here →</button>
+      </div>
+      <div class="tabs"><span>HOME</span><span class="on">TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Machine · video + your history on it</p>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:40px 18px 0;">
+        <div class="lab lm">PUSH DAY · COMPLETE</div>
+        <div class="disp" style="font-size:44px; margin-top:6px;">Done<span style="color:var(--lm);">.</span></div>
+        <div style="display:flex; gap:22px; margin-top:18px;" class="hl">
+          <div style="padding-top:12px;"><div class="num" style="font-size:30px;">52</div><div class="lab">MINUTES</div></div>
+          <div style="padding-top:12px;"><div class="num" style="font-size:30px;">18</div><div class="lab">SETS</div></div>
+          <div style="padding-top:12px;"><div class="num" style="font-size:30px;">12.4K</div><div class="lab">LB VOLUME</div></div>
+        </div>
+        <div class="hl" style="margin-top:16px; padding-top:12px;">
+          <div class="lab" style="margin-bottom:8px;">HIGHLIGHTS</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:10.5px;">
+            <span><b>Chest Press</b> — 160 × 8</span><span class="tkt lm">PR ★</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10.5px;" class="hl">
+            <span style="color:var(--m3);">Volume up 9% vs last Push Day</span><span class="tkt ol">▲ 9%</span>
+          </div>
+        </div>
+        <div class="hl" style="margin-top:14px; padding-top:12px;">
+          <div class="lab" style="margin-bottom:6px;">NOTES</div>
+          <div class="inbox" style="padding:10px; font-size:9px; color:var(--m3); text-align:left; min-height:44px;">Felt strong. Try seat 5 on leg press next time.</div>
+          <button class="gbtn" style="width:100%; padding:9px; font-size:8.5px; margin-top:8px;">Save note</button>
+        </div>
+        <button class="lbtn" style="width:100%; padding:13px; font-size:11px; margin-top:14px;">Back to home →</button>
+      </div>
+      <div class="tabs"><span>HOME</span><span class="on">TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Summary · the payoff screen</p>
+  </div>
+</div>
+
+<h3>Home, Fuel, Stats</h3>
+<div class="mockrow">
+
+  <!-- HOME (refined) -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div style="display:flex; justify-content:space-between;" class="lab"><span>THU 08.28</span><span class="lm">WEEK STREAK 03</span></div>
+        <div class="disp" style="font-size:32px; margin-top:10px;">Evening,<br><span style="color:var(--lm);">Zuriel.</span></div>
+        <div class="hl" style="margin-top:14px; padding-top:10px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span class="lab">CALORIES</span>
+          <span class="num" style="font-size:24px;">1,840<span style="font-size:10px; color:var(--m3); font-family:Inter; font-weight:700;"> /2,400</span></span>
+        </div>
+        <div class="bar3" style="margin-top:6px;"><i style="width:76%;"></i></div>
+        <div class="hl" style="margin-top:12px; padding-top:10px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span class="lab">PROTEIN</span>
+          <span class="num" style="font-size:24px;">102<span style="font-size:10px; color:var(--m3); font-family:Inter; font-weight:700;"> /180 G</span></span>
+        </div>
+        <div class="bar3" style="margin-top:6px;"><i style="width:57%; background:var(--ink3);"></i></div>
+        <div class="hl" style="margin-top:14px; padding-top:12px;">
+          <div class="lab">LAST SESSION · PUSH DAY · 08.26</div>
+          <div style="display:flex; gap:18px; margin-top:8px;">
+            <div><div class="num" style="font-size:20px;">18</div><div class="lab">SETS</div></div>
+            <div><div class="num" style="font-size:20px;">12.4K</div><div class="lab">LB VOL</div></div>
+            <div><div class="num" style="font-size:20px;">52</div><div class="lab">MIN</div></div>
+            <div><div class="num" style="font-size:20px; color:var(--lm);">1★</div><div class="lab lm">PR</div></div>
+          </div>
+        </div>
+        <button class="lbtn" style="width:100%; padding:14px; font-size:12px; margin-top:16px;">Start workout →</button>
+        <div class="lab" style="text-align:center; margin-top:8px;">PULL DAY IS UP NEXT</div>
+      </div>
+      <div class="tabs"><span class="on">HOME</span><span>TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Home · today at a glance</p>
+  </div>
+
+  <!-- FOOD -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div class="lab">THU 08.28</div>
+        <div class="disp" style="font-size:26px; margin-top:6px;">Fuel<span style="color:var(--lm);">.</span></div>
+        <div class="hl" style="margin-top:10px; padding-top:8px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span class="lab">CALORIES</span><span class="num" style="font-size:20px;">1,840<span style="font-size:9px; color:var(--m3); font-family:Inter; font-weight:700;"> /2,400</span></span>
+        </div>
+        <div class="bar3" style="margin-top:5px;"><i style="width:76%;"></i></div>
+        <div class="hl" style="margin-top:10px; padding-top:8px; display:flex; justify-content:space-between; align-items:baseline;">
+          <span class="lab">PROTEIN</span><span class="num" style="font-size:20px;">102<span style="font-size:9px; color:var(--m3); font-family:Inter; font-weight:700;"> /180 G</span></span>
+        </div>
+        <div class="bar3" style="margin-top:5px;"><i style="width:57%; background:var(--ink3);"></i></div>
+        <div class="lab" style="margin-top:14px;">QUICK ADD</div>
+        <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">
+          <span class="tkt ol" style="font-size:8px; padding:5px 9px;">🥤 PROTEIN SHAKE</span>
+          <span class="tkt ol" style="font-size:8px; padding:5px 9px;">🍗 CHICKEN BOWL</span>
+          <span class="tkt ol" style="font-size:8px; padding:5px 9px;">🥣 OATS + BANANA</span>
+        </div>
+        <div class="hl" style="margin-top:12px; padding-top:8px;">
+          <div style="display:flex; justify-content:space-between;" class="lab"><span>BREAKFAST</span><span>410 KCAL</span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;"><span>Oats + banana</span><span style="color:var(--m3);">410 · 10P <span style="color:#5c5c58;">✕</span></span></div>
+        </div>
+        <div class="hl" style="margin-top:8px; padding-top:8px;">
+          <div style="display:flex; justify-content:space-between;" class="lab"><span>LUNCH</span><span>640 KCAL</span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;"><span>Chicken bowl</span><span style="color:var(--m3);">640 · 52P <span style="color:#5c5c58;">✕</span></span></div>
+        </div>
+        <div class="hl" style="margin-top:8px; padding-top:8px;">
+          <div style="display:flex; justify-content:space-between;" class="lab"><span>DINNER</span><span>790 KCAL</span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;"><span>Salmon + rice</span><span style="color:var(--m3);">570 · 38P <span style="color:#5c5c58;">✕</span></span></div>
+          <div style="display:flex; justify-content:space-between; padding:5px 0; font-size:10px;" class="hl"><span>Protein shake</span><span style="color:var(--m3);">220 · 40P <span style="color:#5c5c58;">✕</span></span></div>
+        </div>
+        <button class="gbtn" style="width:100%; padding:11px; font-size:9px; margin-top:12px;">＋ Log food — name · kcal · protein</button>
+      </div>
+      <div class="tabs"><span>HOME</span><span>TRAIN</span><span class="scankey">▣</span><span class="on">FUEL</span><span>STATS</span></div>
+    </div></div>
+    <p class="framelabel">Fuel · saved-meal tickets, meal groups</p>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="mockcol">
+    <div class="phone"><div class="notch"></div><div class="scr ig">
+      <div style="flex:1; overflow:hidden; padding:36px 18px 0;">
+        <div class="lab">THIS WEEK · 3 WORKOUTS</div>
+        <div class="disp" style="font-size:26px; margin-top:6px;">Stats<span style="color:var(--lm);">.</span></div>
+        <div style="display:flex; gap:4px; margin-top:12px;">
+          <div style="flex:1; text-align:center;"><div class="lab">M</div><div style="height:26px; background:var(--lm); margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">T</div><div style="height:26px; background:#1e1e21; margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">W</div><div style="height:26px; background:var(--lm); margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">T</div><div style="height:26px; background:var(--lm); margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">F</div><div style="height:26px; background:#1e1e21; margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">S</div><div style="height:26px; background:#1e1e21; margin-top:3px;"></div></div>
+          <div style="flex:1; text-align:center;"><div class="lab">S</div><div style="height:26px; background:#1e1e21; margin-top:3px;"></div></div>
+        </div>
+        <div class="hl" style="margin-top:14px; padding-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span class="lab">WEEKLY VOLUME · 6 WK</span><span class="tkt lm">▲ 12%</span>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:5px; height:52px; margin-top:8px;">
+            <i style="flex:1; height:38%; background:#26262b;"></i>
+            <i style="flex:1; height:52%; background:#26262b;"></i>
+            <i style="flex:1; height:44%; background:#26262b;"></i>
+            <i style="flex:1; height:66%; background:#26262b;"></i>
+            <i style="flex:1; height:74%; background:#26262b;"></i>
+            <i style="flex:1; height:100%; background:var(--lm);"></i>
+          </div>
+        </div>
+        <div class="hl" style="margin-top:12px; padding-top:8px;">
+          <div class="lab" style="margin-bottom:4px;">SESSIONS</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:10px;">
+            <span><b class="num" style="font-size:13px;">08/26</b> · 18 sets · 12,450 lb · 52 min</span><span class="tkt lm">PR</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:10px;" class="hl">
+            <span><b class="num" style="font-size:13px;">08/25</b> · 14 sets · 9,120 lb · 41 min</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:10px;" class="hl">
+            <span><b class="num" style="font-size:13px;">08/23</b> · 16 sets · 11,300 lb · 48 min</span>
+          </div>
+        </div>
+        <div class="hl" style="margin-top:12px; padding-top:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span class="lab">BODY WEIGHT</span><span class="num" style="font-size:16px;">182.4<span style="font-size:9px; color:var(--m3); font-family:Inter;"> LB · GOAL 178</span></span>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <div class="inbox" style="flex:1; padding:8px; font-size:10px; color:var(--m3); text-align:left;">182.4</div>
+            <button class="gbtn" style="padding:8px 16px; font-size:8.5px;">Log</button>
+          </div>
+        </div>
+      </div>
+      <div class="tabs"><span>HOME</span><span>TRAIN</span><span class="scankey">▣</span><span>FUEL</span><span class="on">STATS</span></div>
+    </div></div>
+    <p class="framelabel">Stats · week, volume trend, sessions</p>
+  </div>
+</div>
+
+<p class="muted" style="font-size:0.88rem;"><b style="color:var(--ink);">Nav change from today:</b> the floating scan FAB becomes a permanent lime <b style="color:var(--lime);">scan key</b> in the center of the tab bar (5 slots: HOME · TRAIN · ▣ · FUEL · STATS). It's the app's signature move — scan a machine from anywhere. The rest timer moves from a floating toast to a <b style="color:var(--ink);">docked bar</b> above the tab bar, so it never covers content and the scan key never needs to dodge it (the current FAB has a <code>.raised</code> hack for exactly that collision).</p>
+
+<!-- ============ 04 DESKTOP ============ -->
+<h2 id="desktop"><span class="idx">04</span>Desktop</h2>
+<p class="lede">Top nav (no sidebar — Ignite reads horizontally), content in a 12-col grid with hairline column rules. Home keeps the scoreboard grid from the first document; here are the three working views.</p>
+
+<!-- TRAIN desktop -->
+<div class="mockrow"><div class="mockcol grow">
+  <div class="browser">
+    <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — train</span></div>
+    <div class="view ig">
+      <div class="topnav">
+        <span class="disp" style="font-size:14px;">GYM<span style="color:var(--lm);">TRKR</span></span>
+        <div class="links"><span>HOME</span><span class="on">TRAIN</span><span>FUEL</span><span>STATS</span></div>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <span class="num" style="font-size:15px; color:var(--lm);">32:14</span>
+          <span class="lbtn" style="padding:7px 16px; font-size:8.5px;">FINISH →</span>
+        </div>
+      </div>
+      <div style="display:flex; height:100%;">
+        <div style="width:250px; border-right:1px solid var(--l3); padding:18px 20px;">
+          <div class="lab">PUSH DAY · 4 OF 6 · 12 SETS DONE</div>
+          <div style="margin-top:12px; font-size:10.5px;">
+            <div style="display:flex; justify-content:space-between; padding:7px 0; color:var(--m3);" class="hl"><span style="text-decoration:line-through;">Incline Press</span><span class="num">3/3</span></div>
+            <div style="display:flex; justify-content:space-between; padding:7px 0; color:var(--m3);" class="hl"><span style="text-decoration:line-through;">Pec Fly</span><span class="num">3/3</span></div>
+            <div style="display:flex; justify-content:space-between; padding:7px 0; color:var(--m3);" class="hl"><span style="text-decoration:line-through;">Lat Raise</span><span class="num">3/3</span></div>
+            <div style="display:flex; justify-content:space-between; padding:7px 0; border-left:3px solid var(--lm); padding-left:9px; margin-left:-12px;" class="hl"><b>Chest Press</b><span class="num" style="color:var(--lm);">2/3</span></div>
+            <div style="display:flex; justify-content:space-between; padding:7px 0;" class="hl"><span>Shoulder Press</span><span class="num" style="color:var(--m3);">0/3</span></div>
+            <div style="display:flex; justify-content:space-between; padding:7px 0;" class="hl"><span>Cable Fly</span><span class="num" style="color:var(--m3);">0/3</span></div>
+          </div>
+          <button class="gbtn" style="width:100%; padding:10px; font-size:8.5px; margin-top:14px;">▣ Scan machine</button>
+          <button class="gbtn" style="width:100%; padding:10px; font-size:8.5px; margin-top:8px; color:var(--dg); border-color:#3a231e;">Discard workout</button>
+        </div>
+        <div style="flex:1; padding:20px 26px;">
+          <div class="disp" style="font-size:26px;">Chest Press</div>
+          <div style="font-size:9px; color:var(--m3); margin-top:2px;">CHEST / TRICEPS · MACHINE #12 — BY THE WINDOWS · LAST TIME <b style="color:var(--ink3);">155×10 · 155×9 · 155×8</b></div>
+          <div style="display:flex; gap:24px; margin-top:16px;">
+            <div style="flex:1.3;">
+              <div style="display:grid; grid-template-columns:36px 1fr 1fr 1fr 44px; gap:12px; padding:6px 0;" class="lab"><span>SET</span><span>PREVIOUS</span><span>LB</span><span>REPS</span><span></span></div>
+              <div style="display:grid; grid-template-columns:36px 1fr 1fr 1fr 44px; gap:12px; align-items:center; padding:9px 0;" class="hl">
+                <span class="num" style="font-size:15px; color:var(--m3);">1</span><span style="font-size:9.5px; color:var(--m3);">155 × 10</span><span class="num" style="font-size:19px;">155</span><span class="num" style="font-size:19px;">10</span>
+                <span style="width:30px; height:30px; background:var(--lm); color:#101204; display:grid; place-items:center; font-weight:900;">✓</span>
+              </div>
+              <div style="display:grid; grid-template-columns:36px 1fr 1fr 1fr 44px; gap:12px; align-items:center; padding:9px 0;" class="hl">
+                <span class="num" style="font-size:15px; color:var(--m3);">2</span><span style="font-size:9.5px; color:var(--m3);">155 × 9</span><span class="num" style="font-size:19px;">160</span><span class="num" style="font-size:19px;">8</span>
+                <span style="width:30px; height:30px; background:var(--lm); color:#101204; display:grid; place-items:center; font-weight:900;">✓</span>
+              </div>
+              <div style="display:grid; grid-template-columns:36px 1fr 1fr 1fr 44px; gap:12px; align-items:center; padding:9px 0;" class="hl">
+                <span class="num" style="font-size:15px;">3</span><span style="font-size:9.5px; color:var(--m3);">155 × 8</span>
+                <div class="inbox" style="padding:8px; font-size:13px;">160</div>
+                <div class="inbox" style="padding:8px; font-size:13px;">8</div>
+                <span style="width:30px; height:30px; border:1px solid var(--lm); color:var(--lm); display:grid; place-items:center; font-weight:900;">✓</span>
+              </div>
+              <div class="lab" style="margin-top:10px;">ENTER LOGS THE SET · TAB MOVES LB → REPS · ⌘K SWITCHES EXERCISE</div>
+            </div>
+            <div style="flex:1; max-width:300px;">
+              <div style="position:relative; aspect-ratio:16/9; background:linear-gradient(150deg,#1c1c20,#101013); border:1px solid var(--l3); display:grid; place-items:center;">
+                <div style="width:36px; height:36px; background:var(--lm); display:grid; place-items:center; color:#101204; padding-left:3px;">▶</div>
+              </div>
+              <div class="lab" style="margin-top:6px;">FORM VIDEO — LIFE FITNESS OFFICIAL</div>
+              <div class="hl" style="margin-top:12px; padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
+                <div><div class="lab">REST</div><div class="num" style="font-size:24px; color:var(--lm);">0:47</div></div>
+                <span class="gbtn" style="padding:8px 18px; font-size:8.5px;">SKIP</span>
+              </div>
+              <div class="bar3" style="margin-top:8px;"><i style="width:53%;"></i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="framelabel">Desktop · Train — queue / logger / video, keyboard-first set entry</p>
+</div></div>
+
+<!-- FUEL + STATS desktop -->
+<div class="mockrow">
+  <div class="mockcol grow" style="flex-basis:480px;">
+    <div class="browser">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — fuel</span></div>
+      <div class="view ig" style="height:430px;">
+        <div class="topnav">
+          <span class="disp" style="font-size:13px;">GYM<span style="color:var(--lm);">TRKR</span></span>
+          <div class="links"><span>HOME</span><span>TRAIN</span><span class="on">FUEL</span><span>STATS</span></div>
+          <span class="lab">THU 08.28</span>
+        </div>
+        <div style="display:flex; height:100%;">
+          <div style="flex:1.2; border-right:1px solid var(--l3); padding:16px 20px;">
+            <div style="display:flex; gap:26px;">
+              <div><div class="num" style="font-size:30px;">1,840</div><div class="lab">KCAL / 2,400</div><div class="bar3" style="width:110px; margin-top:5px;"><i style="width:76%;"></i></div></div>
+              <div><div class="num" style="font-size:30px;">102<span style="font-size:13px; color:var(--m3);">G</span></div><div class="lab">PROTEIN / 180</div><div class="bar3" style="width:110px; margin-top:5px;"><i style="width:57%; background:var(--ink3);"></i></div></div>
+            </div>
+            <div class="hl" style="margin-top:14px; padding-top:8px;">
+              <div style="display:flex; justify-content:space-between;" class="lab"><span>BREAKFAST</span><span>410</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:10px;"><span>Oats + banana</span><span style="color:var(--m3);">410 · 10P ✕</span></div>
+            </div>
+            <div class="hl" style="margin-top:8px; padding-top:8px;">
+              <div style="display:flex; justify-content:space-between;" class="lab"><span>LUNCH</span><span>640</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:10px;"><span>Chicken bowl</span><span style="color:var(--m3);">640 · 52P ✕</span></div>
+            </div>
+            <div class="hl" style="margin-top:8px; padding-top:8px;">
+              <div style="display:flex; justify-content:space-between;" class="lab"><span>DINNER</span><span>790</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:10px;"><span>Salmon + rice</span><span style="color:var(--m3);">570 · 38P ✕</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:10px;" class="hl"><span>Protein shake</span><span style="color:var(--m3);">220 · 40P ✕</span></div>
+            </div>
+          </div>
+          <div style="flex:1; padding:16px 20px;">
+            <div class="lab">LOG FOOD</div>
+            <div class="inbox" style="margin-top:8px; padding:9px; font-size:10px; color:var(--m3); text-align:left;">Food name…</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <div class="inbox" style="flex:1; padding:9px; font-size:10px; color:var(--m3);">kcal</div>
+              <div class="inbox" style="flex:1; padding:9px; font-size:10px; color:var(--m3);">protein g</div>
+            </div>
+            <button class="lbtn" style="width:100%; padding:10px; font-size:9.5px; margin-top:10px;">Add →</button>
+            <div class="lab" style="margin-top:16px;">SAVED MEALS — ONE CLICK</div>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+              <div style="display:flex; justify-content:space-between; border:1px solid var(--l3); padding:8px 10px; font-size:9.5px;"><b>🥤 Protein shake</b><span style="color:var(--m3);">220 · 40P</span></div>
+              <div style="display:flex; justify-content:space-between; border:1px solid var(--l3); padding:8px 10px; font-size:9.5px;"><b>🍗 Chicken bowl</b><span style="color:var(--m3);">640 · 52P</span></div>
+              <div style="display:flex; justify-content:space-between; border:1px solid var(--l3); padding:8px 10px; font-size:9.5px;"><b>🥣 Oats + banana</b><span style="color:var(--m3);">410 · 10P</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="framelabel">Desktop · Fuel — day log left, entry right</p>
+  </div>
+
+  <div class="mockcol grow" style="flex-basis:480px;">
+    <div class="browser">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="url">gym.local — stats</span></div>
+      <div class="view ig" style="height:430px;">
+        <div class="topnav">
+          <span class="disp" style="font-size:13px;">GYM<span style="color:var(--lm);">TRKR</span></span>
+          <div class="links"><span>HOME</span><span>TRAIN</span><span>FUEL</span><span class="on">STATS</span></div>
+          <span class="lab">3 THIS WEEK</span>
+        </div>
+        <div style="display:flex; height:100%;">
+          <div style="flex:1.1; border-right:1px solid var(--l3); padding:16px 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline;"><span class="lab">WEEKLY VOLUME · 6 WK</span><span class="tkt lm">▲ 12%</span></div>
+            <div style="display:flex; align-items:flex-end; gap:8px; height:110px; margin-top:12px;">
+              <i style="flex:1; height:38%; background:#26262b;"></i>
+              <i style="flex:1; height:52%; background:#26262b;"></i>
+              <i style="flex:1; height:44%; background:#26262b;"></i>
+              <i style="flex:1; height:66%; background:#26262b;"></i>
+              <i style="flex:1; height:74%; background:#26262b;"></i>
+              <i style="flex:1; height:100%; background:var(--lm);"></i>
+            </div>
+            <div class="hl" style="margin-top:14px; padding-top:10px;">
+              <div class="lab">SESSIONS</div>
+              <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:10px; border-left:3px solid var(--lm); padding-left:9px; margin-left:-12px; margin-top:6px;"><b>08/26 · Push Day</b><span class="tkt lm">PR</span></div>
+              <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:10px; color:var(--m3);" class="hl"><span>08/25 · Pull Day</span><span>41 min</span></div>
+              <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:10px; color:var(--m3);" class="hl"><span>08/23 · Leg Day</span><span>48 min</span></div>
+            </div>
+          </div>
+          <div style="flex:1; padding:16px 20px;">
+            <div class="lab">08/26 — PUSH DAY</div>
+            <div style="display:flex; gap:16px; margin-top:10px;">
+              <div><div class="num" style="font-size:24px;">18</div><div class="lab">SETS</div></div>
+              <div><div class="num" style="font-size:24px;">12.4K</div><div class="lab">LB</div></div>
+              <div><div class="num" style="font-size:24px;">52</div><div class="lab">MIN</div></div>
+            </div>
+            <div class="hl" style="margin-top:12px; padding-top:8px; font-size:9.5px;">
+              <div style="display:flex; justify-content:space-between; padding:4px 0;"><b>Chest Press</b><span>160×8 <span class="tkt lm" style="margin-left:4px;">PR</span></span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; color:var(--m3);" class="hl"><span>Shoulder Press</span><span>90×10</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; color:var(--m3);" class="hl"><span>Cable Fly</span><span>42.5×12</span></div>
+              <div style="display:flex; justify-content:space-between; padding:4px 0; color:var(--m3);" class="hl"><span>Triceps Pushdown</span><span>57.5×12</span></div>
+            </div>
+            <div class="hl" style="margin-top:12px; padding-top:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;"><span class="lab">BODY WEIGHT</span><span class="num" style="font-size:18px;">182.4</span></div>
+              <div class="lab" style="margin-top:2px;">GOAL 178 · −4.4 TO GO</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="framelabel">Desktop · Stats — trend left, session detail right</p>
+  </div>
+</div>
+
+<!-- ============ 05 KIT ============ -->
+<h2 id="kit"><span class="idx">05</span>Component kit</h2>
+<p class="lede">The 12 pieces from Phase B, in Ignite form. These replace today's <code>.big-btn / .card / .chip / .set-row</code> family one-for-one.</p>
+<div class="kit ig" style="background:transparent;">
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Buttons</div>
+    <button class="lbtn" style="width:100%; padding:12px; font-size:11px;">Primary →</button>
+    <button class="gbtn" style="width:100%; padding:11px; font-size:10px; margin-top:8px;">Ghost</button>
+    <button class="gbtn" style="width:100%; padding:11px; font-size:10px; margin-top:8px; color:var(--dg); border-color:#3a231e;">Destructive</button>
+    <button class="lbtn" style="width:100%; padding:12px; font-size:11px; margin-top:8px; opacity:0.35;" disabled>Disabled</button>
+  </div>
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Set row states</div>
+    <div style="display:grid; grid-template-columns:20px 1fr 1fr 30px; gap:8px; align-items:center; padding:6px 0; font-size:13px;">
+      <span class="num" style="color:var(--m3);">1</span><span class="num" style="font-size:16px;">155</span><span class="num" style="font-size:16px;">10</span>
+      <span style="width:24px; height:24px; background:var(--lm); color:#101204; display:grid; place-items:center; font-size:10px; font-weight:900;">✓</span>
+    </div>
+    <div class="hl" style="display:grid; grid-template-columns:20px 1fr 1fr 30px; gap:8px; align-items:center; padding:6px 0;">
+      <span class="num">2</span><div class="inbox" style="padding:6px; font-size:12px;">160</div><div class="inbox" style="padding:6px; font-size:12px;">8</div>
+      <span style="width:24px; height:24px; border:1px solid var(--lm); color:var(--lm); display:grid; place-items:center; font-size:10px; font-weight:900;">✓</span>
+    </div>
+    <div class="hl" style="display:grid; grid-template-columns:20px 1fr 1fr 30px; gap:8px; align-items:center; padding:6px 0; opacity:0.4;">
+      <span class="num">3</span><div class="inbox" style="padding:6px; font-size:12px;">—</div><div class="inbox" style="padding:6px; font-size:12px;">—</div>
+      <span style="width:24px; height:24px; border:1px solid var(--l3);"></span>
+    </div>
+    <div class="kl" style="color:#5c5c58; margin:8px 0 0;">done / active / pending</div>
+  </div>
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Tickets (replace chips)</div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      <span class="tkt lm">PR ★</span>
+      <span class="tkt lm">UP NEXT</span>
+      <span class="tkt ol">▲ 12%</span>
+      <span class="tkt ol">🥤 PROTEIN SHAKE</span>
+      <span class="tkt dim">3 EXERCISES</span>
+      <span class="tkt" style="border:1px solid #3a231e; color:var(--dg);">▼ 8%</span>
+    </div>
+  </div>
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Progress + week blocks</div>
+    <div class="lab" style="margin-bottom:5px;">CALORIES</div>
+    <div class="bar3"><i style="width:76%;"></i></div>
+    <div style="display:flex; gap:4px; margin-top:14px;">
+      <div style="flex:1; height:22px; background:var(--lm);"></div>
+      <div style="flex:1; height:22px; background:#1e1e21;"></div>
+      <div style="flex:1; height:22px; background:var(--lm);"></div>
+      <div style="flex:1; height:22px; background:var(--lm);"></div>
+      <div style="flex:1; height:22px; background:#1e1e21;"></div>
+      <div style="flex:1; height:22px; background:#1e1e21;"></div>
+      <div style="flex:1; height:22px; background:#1e1e21;"></div>
+    </div>
+    <div class="kl" style="color:#5c5c58; margin:8px 0 0;">3px bar · day blocks, lime = trained</div>
+  </div>
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Rest bar (docked)</div>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--s3); border:1px solid var(--l3);">
+      <span class="lab">REST</span>
+      <div class="bar3" style="flex:1;"><i style="width:53%;"></i></div>
+      <span class="num" style="font-size:16px; color:var(--lm);">0:47</span>
+      <span class="lab" style="color:var(--ink3);">SKIP</span>
+    </div>
+    <div class="kl" style="color:#5c5c58; margin:8px 0 0;">docks above tab bar, drains linearly</div>
+  </div>
+  <div class="kitcell">
+    <div class="kl" style="color:#8b8b86;">Empty state</div>
+    <div class="num" style="font-size:40px; -webkit-text-stroke:1px #3a3a3e; color:transparent;">00</div>
+    <div class="lab" style="margin-top:4px;">NO SESSIONS YET</div>
+    <div style="font-size:10px; color:var(--m3); margin-top:4px;">Your history builds here. First one today?</div>
+    <button class="lbtn" style="padding:9px 16px; font-size:9px; margin-top:10px;">Start workout →</button>
+    <div class="kl" style="color:#5c5c58; margin:10px 0 0;">outlined “ghost numeral” pattern</div>
+  </div>
+</div>
+
+<!-- ============ 06 DENSITY ============ -->
+<h2 id="density"><span class="idx">06</span>Density &amp; edge cases</h2>
+<p class="lede">The risk flagged in round one: bold athletic styles fall apart on dense, form-heavy screens. Ignite's answer is a strict altitude split.</p>
+<div class="panel">
+  <p style="margin:0;"><b>The split:</b> Anton + caps live only at the <b>screen altitude</b> (titles, stat numerals, nav). Everything at the <b>row altitude</b> — exercise lists, food entries, form fields, notes — is plain Inter at 13–14px, sentence case, exactly like a normal app. A dense screen in Ignite is just a normal readable list under a loud header, so density can't break it.</p>
+  <ul style="color:var(--mut); font-size:0.9rem; margin:14px 0 0; padding-left:18px;">
+    <li style="margin-bottom:6px;"><b style="color:var(--ink);">Long names</b> ("Seated Alternating Dumbbell Curl", "Chest press by the windows"): row altitude → Inter, wraps to 2 lines, never truncates mid-word. Anton never gets long strings, so its tight setting is never stress-tested.</li>
+    <li style="margin-bottom:6px;"><b style="color:var(--ink);">Forms</b> (quick-add food, map-new-machine): boxed <code>--surface</code> inputs with hairline borders, labels in the tracked 10px style. Shown working in the Fuel desktop mock above.</li>
+    <li style="margin-bottom:6px;"><b style="color:var(--ink);">Zero states</b>: the outlined "ghost numeral" pattern (kit, above) keeps empty screens on-brand instead of blank.</li>
+    <li><b style="color:var(--ink);">Confirmations</b>: destructive actions (discard workout) get the danger color and a full-width ghost button, never lime — lime always means "go".</li>
+  </ul>
+</div>
+
+<!-- ============ 07 BUILD ============ -->
+<h2 id="build"><span class="idx">07</span>Build notes — deltas to the phased plan</h2>
+<p class="lede">The 5-phase plan from round one stands. Ignite adds these specifics:</p>
+<div class="timeline">
+  <div class="tl-item"><b>Phase A</b><ul>
+    <li>Self-host <b>Anton</b> (single 400 woff2, ~48KB) with <code>font-display: swap</code> and a <code>local()</code>-first stack; Inter stays as-is. Token sheet is the 9 colors + 2 face variables above.</li>
+    <li>Tab bar becomes 5-slot with the center scan key; the <code>fabScreens</code> logic and <code>.fab.raised</code> hack in <code>App.tsx</code> are deleted.</li>
+    <li>Rest toast → docked rest bar component, rendered between screen and tab bar in the shell.</li>
+  </ul></div>
+  <div class="tl-item"><b>Phase B</b><ul>
+    <li>12 components as shown in the kit. Radius/shadow tokens go to 0 — a lot of today's CSS simply gets deleted (Ignite is net-negative lines).</li>
+    <li>Numeral count-in, bar fill, and PR flash as three shared keyframe utilities gated on <code>prefers-reduced-motion</code>.</li>
+  </ul></div>
+  <div class="tl-item"><b>Phase C</b><ul>
+    <li>Screen order unchanged (Home → Workout first). Workout screen additionally swaps the set-check button to the 26px lime square and moves "last time" under the table as a label line.</li>
+  </ul></div>
+  <div class="tl-item"><b>Phase D</b><ul>
+    <li>Desktop = top nav + hairline-ruled columns (mocks above). Set entry gets keyboard flow: <b>Tab</b> lb→reps, <b>Enter</b> logs the set and starts rest, <b>⌘K</b> exercise switcher.</li>
+  </ul></div>
+  <div class="tl-item"><b>Phase E</b><ul>
+    <li>Extra check for Ignite specifically: caps-label legibility pass on a real phone at arm's length (the 10px tracked labels are the most fragile element), plus Anton fallback rendering check (Arial Narrow) before the font loads.</li>
+  </ul></div>
+</div>
+
+<!-- ============ 08 QA ============ -->
+<h2 id="qa"><span class="idx">08</span>Q&amp;A — decisions before Phase A starts</h2>
+
+<div class="qa">
+  <h3>1. Display font: Anton (as shown) — good enough, or upgrade?</h3>
+  <p style="margin:0; font-size:0.92rem;">This whole page is set in <b>Anton</b> — free (OFL), one weight, tiny file. Alternatives: <b>Archivo Black</b> (slightly friendlier, less condensed), or a licensed grotesk like <b>Druk</b> (the actual Nike-poster face, ~$250+/style).</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> the font <i>is</i> this design — swapping it later re-tunes every numeral size. Judge Anton by scrolling the mocks above: if the headers and clocks already feel right to you, we lock it and pay nothing.</p>
+</div>
+
+<div class="qa">
+  <h3>2. Confirm the accent: lime <code>#d8f34f</code>?</h3>
+  <p style="margin:0; font-size:0.92rem;">Everything above uses lime. Same system works with <span style="color:#ff5c1f; font-weight:800;">signal orange #ff5c1f</span> (hotter, more aggressive) or <span style="color:#7df0c8; font-weight:800;">iced mint #7df0c8</span> (a nod to the current app's green). One-line token change <i>now</i>, a re-review of every screen <i>later</i>.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> with a one-accent system the accent is ~80% of the personality. Lime photographs "electric/energy", orange "intensity", mint "clean". This is taste — only you can pick it.</p>
+</div>
+
+<div class="qa">
+  <h3>3. Scan key in the center of the tab bar — keep it?</h3>
+  <p style="margin:0; font-size:0.92rem;"><b>(a)</b> Yes — scan is the app's signature action, give it the permanent center slot (as mocked) · <b>(b)</b> No — keep today's floating button on workout screens only, tab bar stays 4 slots.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> it's the one <i>navigation</i> change in an otherwise visual redesign. Center slot makes scanning reachable from Food/History too and kills the FAB-vs-rest-timer collision hack, but it permanently spends the most valuable pixel on screen. Depends on how often you actually scan mid-gym vs. start from a routine.</p>
+</div>
+
+<div class="qa">
+  <h3>4. "Evening, Zuriel." — add a name field to Settings?</h3>
+  <p style="margin:0; font-size:0.92rem;">The mocks greet you by name, but <code>Settings</code> has no name field today — the current app says "Good evening 👋". Options: <b>(a)</b> add an optional name in Settings (tiny scope add, one field + one migration) · <b>(b)</b> drop the name, greeting stays "Evening." with the lime period.</p>
+  <p class="why" style="margin:8px 0 0;"><b>Why I'm asking:</b> it's the only thing in these mocks the data layer can't render today, and the no-name fallback changes the Home header's typographic balance — better to decide now than discover it in Phase C. Honestly, "Evening.<span style="color:var(--lime)">"</span> alone looks pretty strong too.</p>
+</div>
+
+<p class="muted" style="margin-top:44px; font-size:0.8rem;">Plan(gy) · Ignite deep dive · 2026-08-28 · companion to the three-direction plan · data layer untouched</p>
+
+</div>
+<script>
+function replay(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('play');
+  void el.offsetWidth;
+  el.classList.add('play');
+}
+</script>
+</body>
+</html>
