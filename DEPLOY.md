@@ -49,6 +49,16 @@ the sync layer replicates writes to/from the backend (see `app/src/data/sync.ts`
    Sign-ups are refused until `INVITE_CODE` is set, and refused with any code
    that doesn't match it. Rotate or unset it any time to close the door.
 
+   ⚠️ Set `BETTER_AUTH_SECRET` **before the first sign-in**. The JWT signing
+   key is created on first sign-in and encrypted with the secret — setting or
+   changing the secret afterwards makes every token request fail with
+   `Auth server error (500)` (log: "Failed to decrypt private key"). Recover
+   with a one-time key rotation (sessions survive; devices mint fresh tokens
+   on their next sync):
+   ```bash
+   npx convex run auth:rotateKeys
+   ```
+
 ## Accounts
 
 Everyone gets their own account: open the app → **Create account** → name,

@@ -4,7 +4,7 @@ import { betterAuth } from 'better-auth/minimal'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { components } from './_generated/api'
 import type { DataModel } from './_generated/dataModel'
-import { query } from './_generated/server'
+import { internalAction, query } from './_generated/server'
 import authConfig from './auth.config'
 
 // Public URL of the app itself (e.g. https://gym.example.com); set on the
@@ -38,7 +38,17 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
         }
       }),
     },
-    plugins: [crossDomain({ siteUrl }), convex({ authConfig })],
+    plugins: [
+      crossDomain({ siteUrl }),
+      convex({
+        authConfig,
+        // Regenerate the JWT signing key if the stored one can't be used —
+        // e.g. it was encrypted under a different BETTER_AUTH_SECRET (the key
+        // is created on first sign-in, so setting/rotating the secret after
+        // that would otherwise 500 every /convex/token call forever).
+        jwksRotateOnTokenGenerationError: true,
+      }),
+    ],
   })
 
 /** Session-validated caller, or throws. Every sync function goes through this. */
@@ -50,4 +60,21 @@ export async function requireUserId(ctx: GenericCtx<DataModel>): Promise<string>
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => authComponent.safeGetAuthUser(ctx),
+})
+
+/**
+ * Delete and regenerate the JWT signing keys. Run this once after changing
+ * BETTER_AUTH_SECRET — the stored private key is encrypted with the secret,
+ * so a new secret makes every /convex/token call 500 until the keys rotate:
+ *
+ *   npx convex run auth:rotateKeys
+ *
+ * Sessions survive; devices just mint fresh JWTs on their next sync.
+ */
+export const rotateKeys = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    await createAuth(ctx).api.rotateKeys()
+    return 'rotated'
+  },
 })
