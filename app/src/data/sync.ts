@@ -37,7 +37,7 @@ const cursorKey = () => `gym.sync.cursor::${user!.id}`
 
 const SYNC_TABLES = [
   'exercises', 'equipmentModels', 'machines', 'routines',
-  'workouts', 'sets', 'food', 'savedMeals', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'settings',
+  'workouts', 'sets', 'food', 'savedMeals', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
 ] as const
 
 // ---------- status store (consumed by the UI via useSyncExternalStore) ----------
@@ -210,7 +210,7 @@ async function runSync() {
   setStatus({ phase: 'syncing', error: undefined })
   try {
     const token = await authToken()
-    if (!token) throw new Error('Session expired — sign out and back in (Stats tab).')
+    if (!token) throw new Error('Session expired — sign out and back in (Settings).')
     client.setAuth(token)
 
     // first sync of this account on this device: claim + merge instead of blind push

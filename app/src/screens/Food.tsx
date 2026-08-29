@@ -232,7 +232,7 @@ export function FoodScreen() {
               {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{aiError}</span>}
               {!ai.available && (
                 <span className="small" style={{ display: 'block', marginTop: 6 }}>
-                  {ai.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+                  {ai.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in Settings.'}
                 </span>
               )}
               <div style={{ height: 14 }} />

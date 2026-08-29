@@ -166,6 +166,24 @@ export interface MachineAiInfo {
   createdAt: number
 }
 
+/** Self-reported "weight I can do" for one exercise. One per exercise: id = exercise id. */
+export interface StrengthBaseline {
+  /** exercise id */
+  id: string
+  weightLb: number
+  /** reps the user can do at that weight */
+  reps: number
+  /** epoch ms of when the user reported or updated it */
+  at: number
+}
+
+/**
+ * Estimated max from one hard set (Epley). Never a weight to lift — only used
+ * to scale starting weights and show progress in plain words.
+ */
+export const epleyMaxLb = (weightLb: number, reps: number): number =>
+  Math.round(weightLb * (1 + reps / 30))
+
 /** One body-composition reading (e.g. a smart-scale weigh-in). All metrics optional. */
 export interface BodyStatEntry {
   id: string
@@ -270,6 +288,10 @@ export interface DataAPI {
   logSet(s: Omit<WorkoutSet, 'id' | 'loggedAt'>): Promise<WorkoutSet>
   deleteSet(id: string): Promise<void>
   getPrevPerformance(exerciseId: string, beforeWorkoutId?: string): Promise<PrevPerformance | undefined>
+  listBaselines(): Promise<StrengthBaseline[]>
+  getBaseline(exerciseId: string): Promise<StrengthBaseline | undefined>
+  saveBaseline(b: Omit<StrengthBaseline, 'at'>): Promise<StrengthBaseline>
+  deleteBaseline(exerciseId: string): Promise<void>
   listRecentWorkouts(limit: number): Promise<WorkoutSummary[]>
   getWorkoutSummary(workoutId: string): Promise<WorkoutSummary | undefined>
 

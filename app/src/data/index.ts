@@ -1,5 +1,5 @@
-import type { BodyStatEntry, DataAPI, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, TapeEntry, WeekActivity, Workout, WorkoutSet, WorkoutSummary } from '../types'
-import { toDayKey } from '../types'
+import type { BodyStatEntry, DataAPI, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, Workout, WorkoutSet, WorkoutSummary } from '../types'
+import { epleyMaxLb, toDayKey } from '../types'
 import { db, type EquipmentModelRecord, type MachineRecord } from './db'
 import { normalizeQrUrl } from './qr'
 import { ensureSeeded } from './seed'
@@ -44,9 +44,26 @@ export const api: DataAPI = {
   async cancelWorkout(workoutId) { await ready(); await db.transaction('rw', db.workouts, db.sets, async () => { await db.workouts.delete(workoutId); await db.sets.where('workoutId').equals(workoutId).delete() }) },
   async finishWorkout(workoutId, notes) { await ready(); const workout = await db.workouts.get(workoutId); if (!workout) throw new Error('workout not found'); const finished: Workout = { ...workout, finishedAt: Date.now(), ...(notes ? { notes } : {}) }; await db.workouts.put(finished); return workoutSummary(finished) },
   async listSets(workoutId) { await ready(); return (await db.sets.where('workoutId').equals(workoutId).toArray()).sort((a, b) => a.loggedAt - b.loggedAt) },
-  async logSet(set) { await ready(); const full: WorkoutSet = { ...set, id: uid(), loggedAt: Date.now() }; await db.sets.add(full); return full },
+  async logSet(set) {
+    await ready()
+    const full: WorkoutSet = { ...set, id: uid(), loggedAt: Date.now() }
+    await db.sets.add(full)
+    // a logged set that beats the baseline becomes the new baseline, so
+    // "My strength" keeps tracking the user as they get stronger
+    if (full.weightLb > 0 && full.reps > 0) {
+      const baseline = await db.baselines.get(full.exerciseId)
+      if (baseline && epleyMaxLb(full.weightLb, full.reps) > epleyMaxLb(baseline.weightLb, baseline.reps)) {
+        await db.baselines.put({ id: full.exerciseId, weightLb: full.weightLb, reps: full.reps, at: full.loggedAt })
+      }
+    }
+    return full
+  },
   async deleteSet(id) { await ready(); await db.sets.delete(id) },
   async getPrevPerformance(exerciseId, beforeWorkoutId) { await ready(); const before = beforeWorkoutId ? await db.workouts.get(beforeWorkoutId) : undefined; const candidates = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt) && (!before || workout.startedAt < before.startedAt)).sort((a, b) => b.startedAt - a.startedAt); for (const workout of candidates) { const sets = (await db.sets.where('workoutId').equals(workout.id).toArray()).filter((set) => set.exerciseId === exerciseId).sort((a, b) => a.setNumber - b.setNumber); if (sets.length) { const performance: PrevPerformance = { workoutDate: workout.date, sets: sets.map(({ weightLb, reps }) => ({ weightLb, reps })) }; return performance } } return undefined },
+  async listBaselines() { await ready(); return (await db.baselines.toArray()).sort((a, b) => b.at - a.at) },
+  async getBaseline(exerciseId) { await ready(); return db.baselines.get(exerciseId) },
+  async saveBaseline(baseline) { await ready(); const full: StrengthBaseline = { ...baseline, at: Date.now() }; await db.baselines.put(full); return full },
+  async deleteBaseline(exerciseId) { await ready(); await db.baselines.delete(exerciseId) },
   async listRecentWorkouts(limit) { await ready(); const workouts = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt)).sort((a, b) => b.startedAt - a.startedAt).slice(0, limit); return Promise.all(workouts.map(workoutSummary)) },
   async getWorkoutSummary(workoutId) { await ready(); const workout = await db.workouts.get(workoutId); return workout ? workoutSummary(workout) : undefined },
   async listFood(date) { await ready(); return db.food.where('date').equals(date).toArray() },

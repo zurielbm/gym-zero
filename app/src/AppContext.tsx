@@ -11,6 +11,7 @@ export type Screen =
   | { name: 'history' }
   | { name: 'body' }
   | { name: 'summary'; workoutId: string }
+  | { name: 'settings' }
 
 export interface AppCtx {
   api: DataAPI

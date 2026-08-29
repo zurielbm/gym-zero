@@ -3,7 +3,8 @@ import { useApp } from '../AppContext'
 import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
-import type { AiProgram, EquipmentModel, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, TrainingGoal } from '../types'
+import type { AiProgram, EquipmentModel, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
+import { epleyMaxLb } from '../types'
 
 interface Props {
   machineId?: string
@@ -18,6 +19,10 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   const [machine, setMachine] = useState<GymMachine | null>(null)
   const [model, setModel] = useState<EquipmentModel | null>(null)
   const [perf, setPerf] = useState<PrevPerformance | undefined>()
+  const [baseline, setBaseline] = useState<StrengthBaseline | undefined>()
+  const [baseW, setBaseW] = useState('')
+  const [baseR, setBaseR] = useState('')
+  const [baseSaved, setBaseSaved] = useState(false)
   const [loaded, setLoaded] = useState(false)
   // map-new-machine form
   const [nickname, setNickname] = useState('')
@@ -71,7 +76,13 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
 
   useEffect(() => {
     const exId = machine?.exerciseId
-    if (exId) api.getPrevPerformance(exId, activeWorkout?.id).then(setPerf)
+    if (!exId) return
+    api.getPrevPerformance(exId, activeWorkout?.id).then(setPerf)
+    api.getBaseline(exId).then((b) => {
+      setBaseline(b)
+      setBaseW(b ? String(b.weightLb) : '')
+      setBaseR(b ? String(b.reps) : '')
+    })
   }, [api, machine, activeWorkout])
 
   if (!loaded) return null
@@ -107,7 +118,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
     try {
       const prog = await recommendProgram(config, {
         machine: m, exercise, machineAi: aiInfo,
-        settings: { ...settings, ...override }, prev: perf,
+        settings: { ...settings, ...override }, prev: perf, baseline,
       })
       await api.saveAiProgram(prog)
       setProgram(prog)
@@ -185,7 +196,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             </button>
             {!aiAvail.available && (
               <span className="small" style={{ display: 'block', margin: '6px 0 0' }}>
-                {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+                {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in Settings.'}
               </span>
             )}
             <div style={{ height: 10 }} />
@@ -281,7 +292,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             {program.startWeightLb != null && (
               <span>
                 <span className="num" style={{ fontSize: '1.4rem', display: 'block' }}>~{program.startWeightLb}</span>
-                <span className="lab">Start lb · guess</span>
+                <span className="lab">{perf || baseline ? 'Start lb' : 'Start lb · guess'}</span>
               </span>
             )}
             <span>
@@ -324,13 +335,72 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
           </button>
           {!aiAvail.available && (
             <span className="small" style={{ display: 'block', margin: '6px 0 0' }}>
-              {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in the Stats tab.'}
+              {aiAvail.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in Settings.'}
             </span>
           )}
           <div style={{ height: 10 }} />
         </>
       )}
       {progError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginBottom: 8 }}>{progError}</span>}
+
+      {!perf && (
+        <div className="card">
+          <div className="row">
+            <span className="lab lm">I know my weight</span>
+            {baseline && (
+              <span className="lab">est. max ~{epleyMaxLb(baseline.weightLb, baseline.reps)} lb</span>
+            )}
+          </div>
+          <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
+            Done this machine before? Enter one set's worth: the weight and how many reps you get at it (e.g. 50 × 10, not number of sets). Your program starts from it instead of a guess.
+          </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="text-in" inputMode="decimal" placeholder="lb" style={{ width: 74, textAlign: 'center' }}
+              value={baseW} onChange={(e) => { setBaseW(e.target.value); setBaseSaved(false) }}
+            />
+            <span className="lab">×</span>
+            <input
+              className="text-in" inputMode="numeric" placeholder="reps" style={{ width: 62, textAlign: 'center' }}
+              value={baseR} onChange={(e) => { setBaseR(e.target.value); setBaseSaved(false) }}
+            />
+            <button
+              className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }}
+              disabled={!(parseFloat(baseW) > 0 && parseInt(baseR, 10) > 0)}
+              onClick={async () => {
+                const saved = await api.saveBaseline({
+                  id: machine.exerciseId,
+                  weightLb: parseFloat(baseW),
+                  reps: parseInt(baseR, 10),
+                })
+                setBaseline(saved)
+                setBaseSaved(true)
+              }}
+            >
+              {baseSaved ? 'Saved ✓' : 'Save'}
+            </button>
+          </div>
+          {(() => {
+            const w = parseFloat(baseW)
+            const r = parseInt(baseR, 10)
+            if (!(w > 0 && r > 0)) return null
+            const max = epleyMaxLb(w, r)
+            const start = Math.max(5, Math.round((max * 0.72) / 5) * 5)
+            return (
+              <span className="small" style={{ display: 'block', marginTop: 6 }}>
+                {r <= 5
+                  ? `${w}×${r} reads as a near-max effort (max ~${max} lb). If ${w} lb is a normal set for you, enter the reps you actually get at it.`
+                  : `One set of ${r} at ${w} lb → max ~${max} lb. Your program will start near ~${start} lb and grow as you log heavier sets.`}
+              </span>
+            )
+          })()}
+          {baseSaved && program && aiAvail.available && (
+            <span className="small" style={{ display: 'block', marginTop: 6 }}>
+              Tap ↻ Recalculate above to rebuild the program from this weight.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <b style={{ fontSize: '0.85rem' }}>My setup</b>

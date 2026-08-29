@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../AppContext'
-import type { AiProgram, GymMachine, PrevPerformance, Routine, WorkoutSet } from '../types'
+import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
 
 interface Draft { w: string; r: string }
 
@@ -13,6 +13,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   const [programs, setPrograms] = useState<Record<string, AiProgram | undefined>>({})
   const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [machines, setMachines] = useState<GymMachine[]>([])
+  const [baselines, setBaselines] = useState<Map<string, StrengthBaseline>>(new Map())
   const [elapsed, setElapsed] = useState('0:00')
 
   const workout = activeWorkout
@@ -24,11 +25,13 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
       workout.routineId ? api.listRoutines().then((rs) => rs.find((r) => r.id === workout.routineId) ?? null) : Promise.resolve(null),
       api.listSets(workout.id),
       api.listMachines(),
-    ]).then(([r, ss, ms]) => {
+      api.listBaselines(),
+    ]).then(([r, ss, ms, bs]) => {
       if (!alive) return
       setRoutine(r)
       setSets(ss)
       setMachines(ms)
+      setBaselines(new Map(bs.map((b) => [b.id, b])))
       setCurrentId((cur) => {
         if (cur) return cur
         // first exercise with unfinished target sets, else first item, else first logged
@@ -97,8 +100,10 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     .filter((s) => s.exerciseId === currentId)
     .sort((a, b) => a.setNumber - b.setNumber)
   const perf = currentId ? prev[currentId] : undefined
-  // AI targets only fill the gap until real history exists — history always wins
+  // fallbacks only fill the gap until real history exists — history always wins,
+  // then the self-reported baseline, then the AI target
   const progTarget = currentId && !perf ? programs[currentId] : undefined
+  const baseline = currentId && !perf ? baselines.get(currentId) : undefined
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
   const defaultFor = (i: number): Draft => {
@@ -106,8 +111,8 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     if (d) return d
     const fromPrev = perf?.sets[i] ?? perf?.sets[perf.sets.length - 1]
     const before = logged[i - 1]
-    const w = fromPrev?.weightLb ?? before?.weightLb ?? progTarget?.startWeightLb
-    const r = fromPrev?.reps ?? before?.reps ?? progTarget?.reps
+    const w = fromPrev?.weightLb ?? before?.weightLb ?? baseline?.weightLb ?? progTarget?.startWeightLb
+    const r = fromPrev?.reps ?? before?.reps ?? baseline?.reps ?? progTarget?.reps
     return { w: w != null ? String(w) : '', r: r != null ? String(r) : '' }
   }
 
@@ -211,6 +216,8 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
                       />
                       {prevHint
                         ? <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>
+                        : isNext && baseline
+                        ? <span className="prev">yours {baseline.weightLb}×{baseline.reps}</span>
                         : isNext && progTarget && (
                           <span className="prev">
                             AI target {progTarget.startWeightLb != null ? `${progTarget.startWeightLb}×` : ''}{progTarget.reps}

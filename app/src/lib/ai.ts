@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { normalizeQrUrl } from '../data/qr'
-import type { AiProgram, Exercise, GymMachine, MachineAiInfo, MealSlot, MuscleGroup, PrevPerformance, Settings } from '../types'
+import type { AiProgram, Exercise, GymMachine, MachineAiInfo, MealSlot, MuscleGroup, PrevPerformance, Settings, StrengthBaseline } from '../types'
 
 /**
  * Direct client for a self-hosted CLIProxyAPI (OpenAI-compatible) endpoint.
@@ -133,7 +133,7 @@ async function callProxy(config: AiConfig, system: string, user: string): Promis
       })
       if (!res.ok) {
         const err = new Error(res.status === 401 || res.status === 403
-          ? 'AI proxy rejected the API key — check it in Stats.'
+          ? 'AI proxy rejected the API key — check it in Settings.'
           : `AI proxy error (${res.status}).`)
         ;(err as { status?: number }).status = res.status
         throw err
@@ -219,7 +219,7 @@ const GOAL_LABELS: Record<NonNullable<Settings['goal']>, string> = {
 }
 
 const PROGRAM_SYSTEM = `You are a friendly coach inside a gym tracking app, writing a starter program for ONE machine. Assume the user is a complete beginner unless the profile says otherwise: prefer 10-15 reps, conservative starts, and plain words a first-timer understands (no jargon).
-startWeightLb is a rough guess for a typical machine of this type (round to 5); machine stacks vary by brand, so the effortCheck sentence must let the user self-correct. If previous sets are provided, base everything on those real numbers instead of guessing. Respect any limitations with a caution. Match reps/rest to the goal (muscle/recomp: 10-12 reps, 60-90s rest; strength: 6-8 reps, 120-180s; fat loss/general: 12-15 reps, 45-75s).
+startWeightLb is a rough guess for a typical machine of this type (round to 5); machine stacks vary by brand, so the effortCheck sentence must let the user self-correct. If previous sets are provided, base everything on those real numbers instead of guessing. reportedWorkingWeight is a weight the user says they can do for that many reps on this machine — treat it as real data too (previous sets win when both are present). Its weeksAgo says how old that report is: strength grows with training, so a report 4+ weeks old is a floor, not a ceiling — lean slightly heavier. Respect any limitations with a caution. Match reps/rest to the goal (muscle/recomp: 10-12 reps, 60-90s rest; strength: 6-8 reps, 120-180s; fat loss/general: 12-15 reps, 45-75s).
 Reply with ONLY this JSON, no prose:
 {"sets":3,"reps":12,"startWeightLb":90,"restSeconds":75,"effortCheck":"one sentence: how the right weight should feel and what to do if it's off","progression":"one or two sentences: exactly when and how much to add","warmup":"one short sentence","cautions":"one short sentence, only if limitations warrant it, else empty string"}`
 
@@ -229,10 +229,12 @@ export interface ProgramInput {
   machineAi?: MachineAiInfo | null
   settings: Settings
   prev?: PrevPerformance
+  /** self-reported "weight I can do"; used when there is no logged history */
+  baseline?: StrengthBaseline
 }
 
 export async function recommendProgram(config: AiConfig, input: ProgramInput): Promise<AiProgram> {
-  const { machine, exercise, machineAi, settings, prev } = input
+  const { machine, exercise, machineAi, settings, prev, baseline } = input
   const profile = {
     experience: settings.experience ?? 'new',
     goal: GOAL_LABELS[settings.goal ?? 'general'],
@@ -249,6 +251,9 @@ export async function recommendProgram(config: AiConfig, input: ProgramInput): P
     exercise: { name: exercise.name, muscleGroups: exercise.muscleGroups, equipment: exercise.equipment },
     profile,
     previousSets: prev?.sets,
+    reportedWorkingWeight: baseline
+      ? { weightLb: baseline.weightLb, reps: baseline.reps, weeksAgo: Math.max(0, Math.round((Date.now() - baseline.at) / 604_800_000)) }
+      : undefined,
   })) as Record<string, unknown>
 
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined

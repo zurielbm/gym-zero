@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { BarbellIcon } from '../components/icons'
+import { STRENGTH_CHECK_ROUTINE_ID } from '../data/seed'
 import type { DayFoodStats, Routine, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
@@ -32,15 +33,16 @@ function MacroBar({ label, value, target, unit, alt }: {
 }
 
 export function HomeScreen() {
-  const { api, go, settings, activeWorkout, exercises } = useApp()
+  const { api, go, settings, activeWorkout, setActiveWorkout, exercises } = useApp()
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0 })
   const [last, setLast] = useState<WorkoutSummary | null>(null)
+  const [loadedLast, setLoadedLast] = useState(false)
   const [streakDays, setStreakDays] = useState(0)
   const [upNext, setUpNext] = useState<Routine | null>(null)
 
   useEffect(() => {
     api.getDayFoodStats(toDayKey(new Date())).then(setStats)
-    api.listRecentWorkouts(1).then((ws) => setLast(ws[0] ?? null))
+    api.listRecentWorkouts(1).then((ws) => { setLast(ws[0] ?? null); setLoadedLast(true) })
     api.getWeekActivity().then((wa) => setStreakDays(wa.days.filter((d) => d.workoutId).length))
     api.listRoutines().then((rs) => {
       const ordered = [...rs].sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0))
@@ -84,6 +86,27 @@ export function HomeScreen() {
         </div>
 
         <div>
+          {loadedLast && !last && !activeWorkout && (
+            <div className="card" style={{ marginTop: 14 }}>
+              <span className="lab lm">🎯 First visit? Do the Strength Check</span>
+              <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
+                One easy session on six machines. On each: warm up light, then find a weight
+                where 8–12 good reps feel hard but you could do 2 more, and log it.
+                Every program after that starts from your real strength — no maxing out, ever.
+              </span>
+              <button
+                className="ghost-btn"
+                onClick={async () => {
+                  const w = await api.startWorkout(STRENGTH_CHECK_ROUTINE_ID)
+                  setActiveWorkout(w)
+                  go({ name: 'workout' })
+                }}
+              >
+                Start the strength check →
+              </button>
+            </div>
+          )}
+
           {last && (
             <div className="card tappable" style={{ marginTop: 14 }} onClick={() => go({ name: 'history' })}>
               <div className="row">

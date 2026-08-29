@@ -52,6 +52,27 @@ const routines: Routine[] = [
   { id: 'rt-legs', name: 'Legs', emoji: '🦵', items: [{ exerciseId: 'ex-leg-press', targetSets: 4 }, { exerciseId: 'ex-leg-extension', targetSets: 3 }, { exerciseId: 'ex-leg-curl', targetSets: 3 }, { exerciseId: 'ex-hip-abductor', targetSets: 3 }, { exerciseId: 'ex-calf-raise', targetSets: 4 }] },
 ]
 
+/**
+ * Guided assessment: one session across the six machines that cover every
+ * major movement pattern. Added if-absent (not only on fresh installs) so
+ * existing databases get it too; there is no routine delete, so this never
+ * resurrects anything.
+ */
+export const STRENGTH_CHECK_ROUTINE_ID = 'rt-strength-check'
+const strengthCheckRoutine: Routine = {
+  id: STRENGTH_CHECK_ROUTINE_ID,
+  name: 'Strength Check',
+  emoji: '🎯',
+  items: [
+    { exerciseId: 'ex-chest-press', targetSets: 2 },
+    { exerciseId: 'ex-lat-pulldown', targetSets: 2 },
+    { exerciseId: 'ex-seated-row', targetSets: 2 },
+    { exerciseId: 'ex-shoulder-press', targetSets: 2 },
+    { exerciseId: 'ex-leg-press', targetSets: 2 },
+    { exerciseId: 'ex-leg-curl', targetSets: 2 },
+  ],
+}
+
 const savedMeals: SavedMeal[] = [
   { id: 'sm-shake', name: 'Protein shake', emoji: '🥤', calories: 340, protein: 48 },
   { id: 'sm-chipotle', name: 'Chipotle bowl', emoji: '🌯', calories: 780, protein: 54 },
@@ -139,6 +160,14 @@ export function ensureSeeded(): Promise<void> {
           await db.savedMeals.bulkAdd(savedMeals)
           await db.settings.add({ id: 'settings', ...settings })
         })
+      } finally {
+        syncFlags.seeding = false
+      }
+    }
+    if (!(await db.routines.get(strengthCheckRoutine.id))) {
+      syncFlags.seeding = true
+      try {
+        await db.routines.add(strengthCheckRoutine)
       } finally {
         syncFlags.seeding = false
       }

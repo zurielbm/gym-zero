@@ -1,6 +1,6 @@
 import { useApp } from '../AppContext'
 import type { Screen } from '../AppContext'
-import { BarbellIcon, ChartIcon, FoodIcon, HomeIcon, ScanIcon } from './icons'
+import { BarbellIcon, ChartIcon, FoodIcon, GearIcon, HomeIcon, ScanIcon } from './icons'
 
 const workoutScreens = new Set(['routines', 'workout', 'machine', 'summary'])
 
@@ -44,9 +44,10 @@ export function TabBar() {
   )
 }
 
-/** Top bar (desktop): brand, links, scan key. */
+/** Top bar (desktop): brand, links, settings gear, scan key. */
 export function TopNav() {
   const { current, navTo, go, scanning } = useNavState()
+  const { screen } = useApp()
   return (
     <nav className="topnav">
       <span className="brand">Gym<span className="lm">Zero</span></span>
@@ -57,13 +58,23 @@ export function TopNav() {
           </button>
         ))}
       </div>
-      <button
-        className={`scan-key${scanning ? ' on' : ''}`}
-        title="Scan machine QR"
-        onClick={() => go({ name: 'scan' })}
-      >
-        <ScanIcon />
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <button
+          className={`icon-btn${screen.name === 'settings' ? ' fav' : ''}`}
+          style={{ padding: 0, display: 'inline-flex' }}
+          title="Settings"
+          onClick={() => go({ name: 'settings' })}
+        >
+          <GearIcon />
+        </button>
+        <button
+          className={`scan-key${scanning ? ' on' : ''}`}
+          title="Scan machine QR"
+          onClick={() => go({ name: 'scan' })}
+        >
+          <ScanIcon />
+        </button>
+      </div>
     </nav>
   )
 }

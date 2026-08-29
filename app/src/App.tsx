@@ -14,6 +14,7 @@ import { FoodScreen } from './screens/Food'
 import { HistoryScreen } from './screens/History'
 import { BodyScreen } from './screens/Body'
 import { SummaryScreen } from './screens/Summary'
+import { SettingsScreen } from './screens/Settings'
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
@@ -107,6 +108,7 @@ export default function App() {
           {screen.name === 'history' && <HistoryScreen />}
           {screen.name === 'body' && <BodyScreen />}
           {screen.name === 'summary' && <SummaryScreen workoutId={screen.workoutId} />}
+          {screen.name === 'settings' && <SettingsScreen />}
         </div>
 
         {restLeft !== null && screen.name === 'workout' && (

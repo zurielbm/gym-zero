@@ -133,6 +133,7 @@ a { color: var(--ink); }
 .back-link:hover { color: var(--ink); }
 .icon-btn { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.1rem; padding: 4px; }
 .icon-btn.fav { color: var(--lime); }
+.icon-btn svg { width: 19px; height: 19px; display: block; }
 
 /* ============ tickets (was: chips) ============ */
 .chip {
