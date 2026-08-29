@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gym + Food Tracker App Plan</title>
+  <style>
+    :root{
+      --bg:#0d1117;
+      --panel:#151b23;
+      --panel2:#1b2430;
+      --text:#f3f6fa;
+      --muted:#9eabb9;
+      --accent:#66e3a4;
+      --accent2:#74a7ff;
+      --border:#2b3644;
+      --warn:#ffd166;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:linear-gradient(180deg,#0b0f14,#101720 55%,#0d1117);
+      color:var(--text);
+      line-height:1.55;
+    }
+    a{color:inherit}
+    .wrap{max-width:1100px;margin:auto;padding:24px}
+    .hero{
+      padding:56px 0 32px;
+      display:grid;
+      grid-template-columns:1.4fr .8fr;
+      gap:24px;
+      align-items:center;
+    }
+    .eyebrow{
+      display:inline-block;
+      color:var(--accent);
+      font-size:.82rem;
+      font-weight:800;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      margin-bottom:10px;
+    }
+    h1{
+      font-size:clamp(2.2rem,5vw,4.6rem);
+      line-height:1.02;
+      margin:0 0 18px;
+      letter-spacing:-.04em;
+    }
+    h2{font-size:1.75rem;margin:0 0 10px}
+    h3{margin:0 0 8px;font-size:1.05rem}
+    p{margin:0 0 12px;color:var(--muted)}
+    .hero-card,.card,.phase{
+      background:rgba(21,27,35,.88);
+      border:1px solid var(--border);
+      border-radius:20px;
+      box-shadow:0 16px 40px rgba(0,0,0,.18);
+    }
+    .hero-card{padding:22px}
+    .mini-stat{
+      display:flex;justify-content:space-between;
+      padding:11px 0;border-bottom:1px solid var(--border)
+    }
+    .mini-stat:last-child{border-bottom:0}
+    .mini-stat b{color:var(--text)}
+    .section{padding:28px 0}
+    .section-head{margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .grid.two{grid-template-columns:repeat(2,1fr)}
+    .card{padding:20px}
+    .tag{
+      display:inline-flex;align-items:center;
+      padding:5px 9px;border-radius:999px;
+      background:#183128;color:var(--accent);
+      font-size:.76rem;font-weight:700;
+      margin-bottom:10px
+    }
+    ul,ol{margin:10px 0 0 20px;padding:0}
+    li{margin:7px 0;color:#cdd6df}
+    .flow{
+      display:grid;grid-template-columns:repeat(5,1fr);gap:10px;
+      counter-reset:step
+    }
+    .flow .step{
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:16px;
+      min-height:145px;
+    }
+    .step-num{
+      width:30px;height:30px;border-radius:50%;
+      display:grid;place-items:center;
+      background:var(--accent);color:#07130d;
+      font-weight:900;margin-bottom:12px
+    }
+    .machine-list{
+      display:grid;grid-template-columns:repeat(4,1fr);gap:10px
+    }
+    .machine{
+      background:#131a22;border:1px solid var(--border);border-radius:14px;
+      padding:12px;font-size:.92rem
+    }
+    .machine strong{display:block;margin-bottom:4px}
+    .muted{color:var(--muted);font-size:.86rem}
+    .roadmap{display:grid;gap:14px}
+    .phase{padding:20px;display:grid;grid-template-columns:110px 1fr;gap:20px}
+    .phase-label{
+      color:var(--accent2);font-weight:900;text-transform:uppercase;
+      letter-spacing:.08em;font-size:.8rem
+    }
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+    th{color:var(--text);font-size:.86rem}
+    td{color:#cbd4dd;font-size:.9rem}
+    .callout{
+      padding:18px 20px;
+      border-left:4px solid var(--warn);
+      background:#272314;
+      border-radius:10px;
+      color:#f8e9aa;
+    }
+    .tech{
+      display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px
+    }
+    .footer{
+      padding:28px 0 56px;color:#8795a5;font-size:.9rem
+    }
+    code{
+      background:#0b1117;border:1px solid var(--border);
+      padding:2px 6px;border-radius:6px;color:#bde8ff
+    }
+    @media (max-width:850px){
+      .hero,.grid,.grid.two,.flow,.machine-list,.tech{grid-template-columns:1fr}
+      .phase{grid-template-columns:1fr}
+      .hero{padding-top:34px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <span class="eyebrow">App Plan</span>
+        <h1>Simple Gym + Food Tracker</h1>
+        <p>
+          Build a fast mobile-first tracker centered on two daily jobs:
+          <strong>log workouts quickly</strong> and <strong>track food simply</strong>.
+          Since you train at LA Fitness, the workout logger should prioritize machine QR codes, instruction videos, saved routines, and one-tap reuse of your previous weights.
+        </p>
+      </div>
+      <div class="hero-card">
+        <div class="mini-stat"><span>Primary action</span><b>Start Workout</b></div>
+        <div class="mini-stat"><span>Workout goal</span><b>&lt; 10 sec to log a set</b></div>
+        <div class="mini-stat"><span>Food goal</span><b>&lt; 30 sec per meal</b></div>
+        <div class="mini-stat"><span>MVP platform</span><b>Mobile web app</b></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">01 — Product Focus</span>
+        <h2>Keep the first version intentionally small</h2>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <span class="tag">Workout</span>
+          <h3>Routine-based logging</h3>
+          <p>Select a saved routine, then move exercise-by-exercise with previous performance already filled in.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Equipment</span>
+          <h3>QR-first machine selection</h3>
+          <p>Scan the code already on a machine, resolve it to the correct equipment model, show its instruction video, and jump directly into logging. Favorites and search remain as fallbacks.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Food</span>
+          <h3>Simple meal tracking</h3>
+          <p>Calories and protein first. Add carbs and fat if useful, but avoid building a giant nutrition database in v1.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">02 — Workout Experience</span>
+        <h2>The ideal gym flow</h2>
+      </div>
+      <div class="flow">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Start Workout</h3>
+          <p>Home screen has one large button.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Choose Routine</h3>
+          <p>Push, Pull, Legs, Upper, Lower, Full Body, or custom.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Select Machine</h3>
+          <p>Favorites appear first, then machine categories.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h3>Log Set</h3>
+          <p>Weight + reps with last session shown beside it.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <h3>Finish</h3>
+          <p>Save duration, volume, PRs, and notes.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">03 — LA Fitness Equipment</span>
+        <h2>Make machine discovery feel instant</h2>
+        <p>Do not hard-code a single exact equipment list for every location. Different clubs can have different brands and machine mixes. Instead, support the QR/video link already attached to equipment, map that URL to an equipment model, and let each user keep a local record for the exact machine at their club.</p>
+      </div>
+
+      <div class="machine-list">
+        <div class="machine"><strong>Chest Press</strong><span class="muted">Chest • Machine</span></div>
+        <div class="machine"><strong>Pec Deck / Fly</strong><span class="muted">Chest • Machine</span></div>
+        <div class="machine"><strong>Shoulder Press</strong><span class="muted">Shoulders • Machine</span></div>
+        <div class="machine"><strong>Lat Pulldown</strong><span class="muted">Back • Cable</span></div>
+        <div class="machine"><strong>Seated Row</strong><span class="muted">Back • Cable</span></div>
+        <div class="machine"><strong>Cable Station</strong><span class="muted">Full body • Cable</span></div>
+        <div class="machine"><strong>Leg Press</strong><span class="muted">Quads / Glutes</span></div>
+        <div class="machine"><strong>Leg Extension</strong><span class="muted">Quads • Machine</span></div>
+        <div class="machine"><strong>Leg Curl</strong><span class="muted">Hamstrings</span></div>
+        <div class="machine"><strong>Hip Abductor</strong><span class="muted">Glutes / Hips</span></div>
+        <div class="machine"><strong>Calf Raise</strong><span class="muted">Calves</span></div>
+        <div class="machine"><strong>Smith Machine</strong><span class="muted">Compound</span></div>
+        <div class="machine"><strong>Hack Squat</strong><span class="muted">Quads / Glutes</span></div>
+        <div class="machine"><strong>Assisted Pull-up</strong><span class="muted">Back / Arms</span></div>
+        <div class="machine"><strong>Biceps Curl</strong><span class="muted">Arms • Machine</span></div>
+        <div class="machine"><strong>Triceps Press</strong><span class="muted">Arms • Machine</span></div>
+      </div>
+
+      <div class="grid two" style="margin-top:16px">
+        <div class="card">
+          <h3>Three-level machine model</h3>
+          <p><strong>Exercise:</strong> Chest Press</p>
+          <p><strong>Equipment model:</strong> exact manufacturer/model identity</p>
+          <p><strong>My machine:</strong> “Chest press by the windows” — seat 4, favorite, specific notes</p>
+        </div>
+        <div class="card">
+          <h3>Why this matters</h3>
+          <p>You do not need a perfect global database of every LA Fitness location. Shared data can identify the generic equipment model and instructional media, while each user keeps their exact machine setup locally.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <span class="tag">Core LA Fitness workflow</span>
+        <h3>Scan → identify → learn → log</h3>
+        <div class="flow" style="grid-template-columns:repeat(4,1fr);margin-top:14px">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>Scan QR</h3>
+            <p>Use the phone camera to scan the code already attached to the machine.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>Resolve Equipment</h3>
+            <p>Match the destination URL to a known manufacturer/model or create a local mapping if unknown.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>Show Video</h3>
+            <p>Open or embed the machine's official instruction video and show setup notes.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <h3>Log Set</h3>
+            <p>Jump straight to last weight/reps, seat position, rest timer, and the next set.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:16px">
+        <div class="card">
+          <h3>First-time scan</h3>
+          <ul>
+            <li>Read QR destination URL.</li>
+            <li>Check local mapping first.</li>
+            <li>If recognized in the community catalog, import equipment metadata.</li>
+            <li>If unknown, save the raw URL locally and let the user name/map the machine once.</li>
+            <li>Future scans of the same code open the logger immediately.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Machine screen</h3>
+          <ul>
+            <li>Machine name + manufacturer/model when known.</li>
+            <li>Official instruction video link.</li>
+            <li>Target muscles and associated exercises.</li>
+            <li>Last workout performance.</li>
+            <li>Seat/handle/setup notes for this exact machine.</li>
+            <li>Favorite + add-to-routine actions.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">04 — Routine Builder</span>
+        <h2>Suggested routine structure</h2>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <h3>Push</h3>
+          <ol>
+            <li>Chest Press — 3 sets</li>
+            <li>Incline Press — 3 sets</li>
+            <li>Shoulder Press — 3 sets</li>
+            <li>Pec Fly — 3 sets</li>
+            <li>Triceps Pressdown — 3 sets</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Pull</h3>
+          <ol>
+            <li>Lat Pulldown — 3 sets</li>
+            <li>Seated Row — 3 sets</li>
+            <li>Rear Delt Fly — 3 sets</li>
+            <li>Cable Curl — 3 sets</li>
+            <li>Assisted Pull-up — 2–3 sets</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Legs</h3>
+          <ol>
+            <li>Leg Press — 4 sets</li>
+            <li>Leg Extension — 3 sets</li>
+            <li>Leg Curl — 3 sets</li>
+            <li>Hip Abductor — 3 sets</li>
+            <li>Calf Raise — 4 sets</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Routine UX</h3>
+          <ul>
+            <li>Drag exercises to reorder.</li>
+            <li>Swap an exercise while preserving target muscle.</li>
+            <li>Favorite the exact machines you use at your club.</li>
+            <li>Show “last time: 140 lb × 10” automatically.</li>
+            <li>One-tap “repeat last set”.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">05 — Food Tracking</span>
+        <h2>Start with the 20% that gives 80% of the value</h2>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Daily target</h3>
+          <p>Track calories and protein prominently at the top of the screen.</p>
+        </div>
+        <div class="card">
+          <h3>Saved foods</h3>
+          <p>Let users save repeated meals like “protein shake,” “Chipotle bowl,” or “eggs + toast.”</p>
+        </div>
+        <div class="card">
+          <h3>Quick add</h3>
+          <p>Allow manual entry: food name, calories, protein, optional carbs/fat.</p>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:16px">
+        For the MVP, skip barcode scanning and a huge food database. Those features add API cost and complexity. Build them after the basic logging loop feels excellent.
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">06 — Screens</span>
+        <h2>Minimum set of app screens</h2>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Screen</th><th>Main purpose</th><th>Important UI</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Home</td><td>See today at a glance</td><td>Start Workout, calories, protein, current streak</td></tr>
+          <tr><td>Routines</td><td>Choose or edit workout plan</td><td>Push / Pull / Legs / custom cards</td></tr>
+          <tr><td>Workout</td><td>Log sets in real time</td><td>Exercise cards, weight, reps, previous set, rest timer</td></tr>
+          <tr><td>Exercises</td><td>Find a machine quickly</td><td>Favorites, muscle filters, machine/cable/free-weight filters</td></tr>
+          <tr><td>Food</td><td>Log meals</td><td>Calories, protein, saved meals, quick add</td></tr>
+          <tr><td>History</td><td>See progress</td><td>Past workouts, PRs, body weight, weekly volume</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">07 — Architecture</span>
+        <h2>Private activity stays local. Shared knowledge goes to Convex.</h2>
+        <p>The app should work fully without an account or network connection. A central server exists only where shared community data or identity is actually useful.</p>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <span class="tag">Local source of truth</span>
+          <h3>Personal data</h3>
+          <ul>
+            <li>Workout history and individual sets</li>
+            <li>Personal routines and exercise order</li>
+            <li>Favorite machines at your gym</li>
+            <li>Personal QR-to-machine mappings and setup notes</li>
+            <li>Food log and personal meals</li>
+            <li>Body weight, goals, and preferences</li>
+            <li>Private notes and machine setup details</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <span class="tag">Central community</span>
+          <h3>Convex data</h3>
+          <ul>
+            <li>Community workout templates</li>
+            <li>Shared exercise and equipment-model definitions</li>
+            <li>Known machine QR URL → equipment/video mappings</li>
+            <li>Public foods and recipes</li>
+            <li>Tags, ratings, and publishing</li>
+            <li>Reports and moderation</li>
+            <li>Optional public profiles</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:16px">
+        Importing a community routine or recipe should create a local copy. If the original author edits or deletes the public version later, the user's personal copy and history should not break.
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>Optional P2P sync</h3>
+        <p>Phone ↔ laptop ↔ tablet should be able to exchange local records directly. Pair devices with a QR code or short pairing code. For the first version, use stable UUIDs, timestamps, device IDs, and soft deletes; full CRDT machinery can wait until real conflict cases justify it.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">08 — Data Model</span>
+        <h2>Simple database structure</h2>
+      </div>
+      <div class="tech">
+        <div class="card">
+          <h3>Exercise</h3>
+          <p><code>id</code>, <code>name</code>, <code>muscle_groups[]</code>, <code>equipment_model_ids[]</code></p>
+        </div>
+        <div class="card">
+          <h3>Routine</h3>
+          <p><code>id</code>, <code>name</code>, ordered list of exercise IDs, default set targets</p>
+        </div>
+        <div class="card">
+          <h3>Workout</h3>
+          <p><code>date</code>, <code>routine_id</code>, duration, notes</p>
+        </div>
+        <div class="card">
+          <h3>Workout Set</h3>
+          <p><code>exercise_id</code>, <code>weight</code>, <code>reps</code>, <code>set_number</code></p>
+        </div>
+        <div class="card">
+          <h3>Food Entry</h3>
+          <p><code>date</code>, <code>meal</code>, <code>name</code>, calories, protein, carbs, fat</p>
+        </div>
+        <div class="card">
+          <h3>Equipment Model</h3>
+          <p><code>id</code>, manufacturer, model name, QR target URLs, instruction URL, image, muscle groups, exercise IDs</p>
+        </div>
+        <div class="card">
+          <h3>Gym Machine</h3>
+          <p><code>id</code>, equipment model ID, local gym ID, QR URL, nickname, seat setting, setup notes, favorite</p>
+        </div>
+        <div class="card">
+          <h3>User Settings</h3>
+          <p>Calorie target, protein target, preferred units, default gym, favorite exercises and machine preferences</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">09 — Build Stack</span>
+        <h2>Easy way to build it</h2>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <span class="tag">Recommended</span>
+          <h3>Local-first + optional Convex</h3>
+          <ul>
+            <li>React / Next.js for a mobile-first PWA.</li>
+            <li>IndexedDB for the local source of truth on web; SQLite if you later ship native.</li>
+            <li>Optional P2P device sync for workouts, food logs, routines, goals, and personal machine data.</li>
+            <li>Convex only for shared/community content such as public workouts, foods, recipes, ratings, and publishing.</li>
+            <li>Use Convex auth only when a feature genuinely needs identity.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="tag">Simplest prototype</span>
+          <h3>HTML + IndexedDB</h3>
+          <ul>
+            <li>No account system and no server dependency.</li>
+            <li>Store workouts, food logs, favorites, routines, and settings locally.</li>
+            <li>Use IndexedDB instead of localStorage once the prototype stores meaningful data.</li>
+            <li>Later keep the same local-first model when moving to React and adding P2P sync.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">10 — Build Roadmap</span>
+        <h2>Build in this order</h2>
+      </div>
+      <div class="roadmap">
+        <div class="phase">
+          <div class="phase-label">Phase 1</div>
+          <div>
+            <h3>Local workout engine</h3>
+            <p>Build the exercise catalog, QR scanner, local QR-to-machine mapping, personal machine favorites, routines, active workout logger, set history, instruction-video access, and previous-performance suggestions. Everything persists locally.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-label">Phase 2</div>
+          <div>
+            <h3>Local food engine</h3>
+            <p>Add calories, protein, saved foods, saved meals, recipes, and quick manual entry. Personal nutrition history remains local by default.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-label">Phase 3</div>
+          <div>
+            <h3>P2P device sync</h3>
+            <p>Pair devices with a QR code or device code and exchange local records directly. Start with UUIDs, timestamps, soft deletes, and simple conflict resolution before considering CRDTs.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-label">Phase 4</div>
+          <div>
+            <h3>Convex community layer</h3>
+            <p>Add public routines, exercises, equipment-model metadata, known QR/video mappings, foods, recipes, tags, ratings, reports, and publishing. Community items can be imported into the user's local library.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="phase-label">Phase 5</div>
+          <div>
+            <h3>Optional identity + polish</h3>
+            <p>Add Convex auth only for publishing, profiles, ratings, moderation, or other identity-based community actions. Then add charts, body-weight trends, photos, and install polish.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">11 — MVP Definition</span>
+        <h2>When the first version is “done”</h2>
+      </div>
+      <div class="card">
+        <ul>
+          <li>You can open the app at LA Fitness and start a routine in two taps.</li>
+          <li>Your favorite machines appear before the full exercise library.</li>
+          <li>Scanning a known machine QR code opens that machine's logger and instruction video with minimal taps.</li>
+          <li>An unknown QR code can be mapped once and remembered locally for future scans.</li>
+          <li>Each exercise shows the weight and reps from your previous session.</li>
+          <li>You can log a set with almost no typing.</li>
+          <li>Your completed workout is saved automatically.</li>
+          <li>You can enter a meal in under 30 seconds.</li>
+          <li>The home screen shows today's workout status, calories, and protein.</li>
+          <li>The core app works offline and without creating an account.</li>
+          <li>Personal workout and nutrition history never requires a central server.</li>
+          <li>Community content can be imported without becoming dependent on the original public item.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="footer">
+      Best first move: prototype the entire workout loop locally before adding any backend. Build Home → Routine → scan machine QR → identify machine → instruction video / setup notes → Set logger → local history. Then add food, then P2P, and only after that add the Convex community layer.
+    </section>
+  </main>
+</body>
+</html>
