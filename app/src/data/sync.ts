@@ -37,7 +37,7 @@ const cursorKey = () => `gym.sync.cursor::${user!.id}`
 
 const SYNC_TABLES = [
   'exercises', 'equipmentModels', 'machines', 'routines',
-  'workouts', 'sets', 'food', 'savedMeals', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
+  'workouts', 'sets', 'food', 'savedMeals', 'drinks', 'containers', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
 ] as const
 
 // ---------- status store (consumed by the UI via useSyncExternalStore) ----------

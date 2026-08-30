@@ -20,8 +20,9 @@ const MEALS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const MUSCLES: MuscleGroup[] = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core', 'hips']
 
 export function aiConfig(settings: Settings): AiConfig | null {
-  const endpoint = settings.aiEndpoint?.trim().replace(/\/+$/, '')
+  let endpoint = settings.aiEndpoint?.trim().replace(/\/+$/, '')
   if (!endpoint) return null
+  if (!/^https?:\/\//i.test(endpoint)) endpoint = `https://${endpoint}`
   return {
     endpoint,
     apiKey: settings.aiApiKey?.trim() || undefined,
@@ -115,12 +116,18 @@ type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
-async function callProxy(config: AiConfig, system: string, user: string | ContentPart[]): Promise<unknown> {
+async function callProxy(
+  config: AiConfig,
+  system: string,
+  user: string | ContentPart[],
+  history: Array<{ role: 'assistant' | 'user'; content: string }> = [],
+): Promise<unknown> {
   const body = JSON.stringify({
     model: config.model || DEFAULT_MODEL,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user },
+      ...history,
     ],
     temperature: 0.2,
     response_format: { type: 'json_object' },
@@ -179,13 +186,34 @@ export interface AiFoodItem {
   meal?: MealSlot
 }
 
-const FOOD_SYSTEM = `You are the nutrition assistant of a gym tracking app. The user describes food they ate in plain language (any language). Split the description into distinct items and estimate macros for realistic serving sizes.
-Reply with ONLY this JSON, no prose:
-{"items":[{"name":"short label, capitalized, include quantity","calories":0,"protein":0,"carbs":0,"fat":0,"meal":"breakfast|lunch|dinner|snack"}]}
-calories in kcal, protein/carbs/fat in grams, all integers. Include "meal" only when the text implies it. At most 12 items.`
+/** A clarification the model wants before it can estimate well; always answerable in free text too. */
+export interface AiFoodQuestion {
+  text: string
+  options: string[]
+}
 
-function toFoodItems(raw: { items?: unknown }, emptyMessage: string): AiFoodItem[] {
-  const list = Array.isArray(raw.items) ? raw.items : []
+export interface AiFoodResult {
+  items: AiFoodItem[]
+  question?: AiFoodQuestion
+  /** verbatim assistant reply, replayed as context when the user answers a question */
+  raw: string
+}
+
+/** What was originally sent, kept around so answers can continue the same conversation. */
+export type AiFoodRequest =
+  | { kind: 'text'; text: string }
+  | { kind: 'photo'; photoDataUrl: string; note?: string }
+
+const FOOD_SYSTEM = `You are the nutrition assistant of a gym tracking app. The user describes food they ate in plain language (any language). Estimate macros for realistic serving sizes.
+Group food into the items a person would say they ate: a sandwich is ONE item ("Ham sandwich"), not bread + ham + lettuce; a burrito is one item. Only split things that are separate on the plate or in the description — a sandwich, a side of fries and a soda are 3 items.
+If something you cannot tell would meaningfully change the numbers (one dish or several? small or large? fried or grilled?), add ONE short "question" with 2-4 tappable answer options — and still include your best-guess items so the user can accept them as-is. Ask only when it truly matters; never ask twice about the same thing.
+Reply with ONLY this JSON, no prose:
+{"items":[{"name":"short label, capitalized, include quantity","calories":0,"protein":0,"carbs":0,"fat":0,"meal":"breakfast|lunch|dinner|snack"}],"question":{"text":"one plain-words question","options":["short answer","short answer"]}}
+Omit "question" entirely when you are reasonably sure. calories in kcal, protein/carbs/fat in grams, all integers. Include "meal" only when the text implies it. At most 12 items.`
+
+function toFoodResult(raw: unknown, emptyMessage: string): AiFoodResult {
+  const parsed = raw as { items?: unknown; question?: unknown }
+  const list = Array.isArray(parsed.items) ? parsed.items : []
   const items: AiFoodItem[] = []
   for (const entry of list.slice(0, 12)) {
     const item = entry as Record<string, unknown>
@@ -201,24 +229,48 @@ function toFoodItems(raw: { items?: unknown }, emptyMessage: string): AiFoodItem
       meal: MEALS.includes(item.meal as MealSlot) ? item.meal as MealSlot : undefined,
     })
   }
-  if (!items.length) throw new Error(emptyMessage)
-  return items
+  let question: AiFoodQuestion | undefined
+  const q = parsed.question as Record<string, unknown> | undefined
+  if (q && typeof q.text === 'string' && q.text.trim()) {
+    question = {
+      text: q.text.trim().slice(0, 160),
+      options: (Array.isArray(q.options) ? q.options : [])
+        .filter((o): o is string => typeof o === 'string' && !!o.trim())
+        .map((o) => o.trim().slice(0, 40))
+        .slice(0, 4),
+    }
+  }
+  // a question with no items is still useful ("is that food or a menu photo?")
+  if (!items.length && !question) throw new Error(emptyMessage)
+  return { items, question, raw: JSON.stringify(parsed) }
 }
 
-export async function parseFood(config: AiConfig, text: string): Promise<AiFoodItem[]> {
-  const raw = await callProxy(config, FOOD_SYSTEM, text.trim()) as { items?: unknown }
-  return toFoodItems(raw, "Couldn't read any food from that — try rephrasing.")
+/** The user's answer to a previous question, replayed as a follow-up turn. */
+export interface AiFoodAnswer {
+  priorRaw: string
+  answer: string
+}
+
+const answerTurns = (followup?: AiFoodAnswer): Array<{ role: 'assistant' | 'user'; content: string }> =>
+  followup ? [
+    { role: 'assistant', content: followup.priorRaw },
+    { role: 'user', content: `Answer to your question: ${followup.answer}\nUpdate the items accordingly and reply with the same JSON shape (ask again only if something new truly matters).` },
+  ] : []
+
+export async function parseFood(config: AiConfig, text: string, followup?: AiFoodAnswer): Promise<AiFoodResult> {
+  const raw = await callProxy(config, FOOD_SYSTEM, text.trim(), answerTurns(followup))
+  return toFoodResult(raw, "Couldn't read any food from that — try rephrasing.")
 }
 
 const FOOD_PHOTO_ADDENDUM = `
 The user sends a PHOTO of their food, with an optional text note. Identify what's on the plate and estimate portion sizes from what you can see — plates, cutlery, hands and packaging give scale. Be conservative when unsure.`
 
-export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, note?: string): Promise<AiFoodItem[]> {
+export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, note?: string, followup?: AiFoodAnswer): Promise<AiFoodResult> {
   const raw = await callProxy(config, FOOD_SYSTEM + FOOD_PHOTO_ADDENDUM, [
     { type: 'image_url', image_url: { url: photoDataUrl } },
     { type: 'text', text: note?.trim() || 'Log the food in this photo.' },
-  ]) as { items?: unknown }
-  return toFoodItems(raw, "Couldn't spot any food in that photo — try a clearer shot.")
+  ], answerTurns(followup))
+  return toFoodResult(raw, "Couldn't spot any food in that photo — try a clearer shot.")
 }
 
 // ---------- machine identification ----------

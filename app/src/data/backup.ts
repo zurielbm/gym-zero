@@ -9,7 +9,7 @@ import { ensureSeeded } from './seed'
 
 const BACKUP_TABLES = [
   'exercises', 'equipmentModels', 'machines', 'routines',
-  'workouts', 'sets', 'food', 'savedMeals', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
+  'workouts', 'sets', 'food', 'savedMeals', 'drinks', 'containers', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
 ] as const
 
 export interface Backup {

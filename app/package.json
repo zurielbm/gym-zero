@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/flow.mjs",
     "e2e:mobile": "node e2e/mobile-audit.mjs",
+    "e2e:hydration": "node e2e/hydration-check.mjs",
+    "e2e:food": "node e2e/food-check.mjs",
     "e2e:scan": "node e2e/scan-camera.mjs"
   },
   "dependencies": {

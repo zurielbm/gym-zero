@@ -1,4 +1,4 @@
-import type { BodyStatEntry, DataAPI, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, Workout, WorkoutSet, WorkoutSummary } from '../types'
+import type { BodyStatEntry, Container, DataAPI, DayDrinkStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, Workout, WorkoutSet, WorkoutSummary } from '../types'
 import { epleyMaxLb, toDayKey } from '../types'
 import { db, type EquipmentModelRecord, type MachineRecord } from './db'
 import { normalizeQrUrl } from './qr'
@@ -85,12 +85,51 @@ export const api: DataAPI = {
   async getWorkoutSummary(workoutId) { await ready(); const workout = await db.workouts.get(workoutId); return workout ? workoutSummary(workout) : undefined },
   async listFood(date) { await ready(); return db.food.where('date').equals(date).toArray() },
   async addFood(entry) { await ready(); const full: FoodEntry = { ...entry, id: uid() }; await db.food.add(full); return full },
-  async deleteFood(id) { await ready(); await db.food.delete(id) },
+  async updateFood(entry) { await ready(); await db.food.put(entry) },
+  async deleteFood(id) {
+    await ready()
+    const entry = await db.food.get(id)
+    await db.transaction('rw', db.food, db.drinks, async () => {
+      await db.food.delete(id)
+      // a drink-logged shake/soda pairs with its food entry; removing one half
+      // silently keeping the other would double- or under-count the day
+      if (entry) await db.drinks.where('date').equals(entry.date).filter((d) => d.foodEntryId === id).delete()
+    })
+  },
+  async listRecentFood(limit) {
+    await ready()
+    const seen = new Set<string>()
+    const recent: FoodEntry[] = []
+    // newest day first; within a day order is insertion order, good enough here
+    const all = await db.food.orderBy('date').reverse().toArray()
+    for (const entry of all) {
+      const key = entry.name.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      recent.push(entry)
+      if (recent.length >= limit) break
+    }
+    return recent
+  },
   async getDayFoodStats(date) { await ready(); const food = await db.food.where('date').equals(date).toArray(); return { calories: food.reduce((total, entry) => total + entry.calories, 0), protein: food.reduce((total, entry) => total + entry.protein, 0), carbs: food.reduce((total, entry) => total + (entry.carbs ?? 0), 0), fat: food.reduce((total, entry) => total + (entry.fat ?? 0), 0) } },
   async listSavedMeals() { await ready(); return db.savedMeals.toArray() },
   async saveSavedMeal(meal) { await ready(); const full: SavedMeal = { ...meal, id: meal.id ?? uid() }; await db.savedMeals.put(full); return full },
   async getCachedProduct(barcode) { await ready(); return db.products.get(barcode) },
   async cacheProduct(product) { await ready(); await db.products.put(product) },
+  async listContainers() { await ready(); return (await db.containers.toArray()).sort((a, b) => a.sortOrder - b.sortOrder) },
+  async saveContainer(container) { await ready(); const full: Container = { ...container, id: container.id ?? uid() }; await db.containers.put(full); return full },
+  async deleteContainer(id) { await ready(); await db.containers.delete(id) },
+  async listDrinks(date) { await ready(); return (await db.drinks.where('date').equals(date).toArray()).sort((a, b) => a.at - b.at) },
+  async addDrink(entry) { await ready(); const full: DrinkEntry = { ...entry, id: uid() }; await db.drinks.add(full); return full },
+  async deleteDrink(id) {
+    await ready()
+    const drink = await db.drinks.get(id)
+    await db.transaction('rw', db.drinks, db.food, async () => {
+      await db.drinks.delete(id)
+      if (drink?.foodEntryId) await db.food.delete(drink.foodEntryId)
+    })
+  },
+  async getDayDrinkStats(date) { await ready(); const drinks = await db.drinks.where('date').equals(date).toArray(); const stats: DayDrinkStats = { totalOz: 0, kinds: {} }; for (const drink of drinks) { stats.totalOz += drink.volumeOz; stats.kinds[drink.kind] = (stats.kinds[drink.kind] ?? 0) + drink.volumeOz } stats.totalOz = Math.round(stats.totalOz); return stats },
   async listBodyStats(limit) { await ready(); const q = db.bodyStats.orderBy('at').reverse(); return limit ? q.limit(limit).toArray() : q.toArray() },
   async addBodyStat(entry) { await ready(); const full: BodyStatEntry = { ...entry, id: uid() }; const settings = await db.settings.get('settings'); if (full.weightLb && full.bmi === undefined && settings?.heightIn) full.bmi = Math.round(((703 * full.weightLb) / settings.heightIn ** 2) * 10) / 10; await db.transaction('rw', db.bodyStats, db.settings, async () => { await db.bodyStats.add(full); const newest = await db.bodyStats.orderBy('at').reverse().first(); if (settings && full.weightLb && newest?.id === full.id) await db.settings.put({ ...settings, bodyWeightLb: full.weightLb }) }); return full },
   async deleteBodyStat(id) { await ready(); await db.bodyStats.delete(id) },

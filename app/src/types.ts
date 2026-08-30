@@ -89,6 +89,10 @@ export interface FoodEntry {
   protein: number
   carbs?: number
   fat?: number
+  /** total grams eaten, when known (barcode logs) — keeps the entry re-scalable */
+  grams?: number
+  /** declared servings eaten, when logged that way */
+  servings?: number
 }
 
 export interface SavedMeal {
@@ -120,12 +124,51 @@ export interface FoodProduct {
   fetchedAt: number
 }
 
+export type DrinkKind = 'water' | 'electrolyte' | 'coffee' | 'shake' | 'other'
+
+/**
+ * A real-life vessel the user drinks from (their bottle, a glass, the shaker).
+ * Registered once; every hydration log is then "I finished that one" — nobody
+ * knows their milliliters, everybody knows their bottle.
+ */
+export interface Container {
+  id: string
+  name: string
+  emoji?: string
+  /** fl oz when full */
+  volumeOz: number
+  /** what's usually in it; a tap logs this kind */
+  kind: DrinkKind
+  /** kcal in a full container; a tap then also writes a food entry (shakes, soda) */
+  calories?: number
+  /** grams of protein in a full container */
+  protein?: number
+  sortOrder: number
+}
+
+export interface DrinkEntry {
+  id: string
+  date: DayKey
+  /** epoch ms */
+  at: number
+  kind: DrinkKind
+  volumeOz: number
+  /** container tapped to log this, when there was one */
+  containerId?: string
+  /** display name, e.g. "Bottle" — kept on the entry so it survives container deletion */
+  name?: string
+  /** food entry holding this drink's calories; the pair deletes together */
+  foodEntryId?: string
+}
+
 export type ExperienceLevel = 'new' | 'returning' | 'experienced'
 export type TrainingGoal = 'muscle' | 'recomp' | 'fat-loss' | 'strength' | 'general'
 
 export interface Settings {
   calorieTarget: number
   proteinTarget: number
+  /** daily water target override, fl oz; unset = auto from body weight + training (see lib/hydration) */
+  waterTargetOz?: number
   /** default rest between sets, seconds */
   restSeconds: number
   bodyWeightLb?: number
@@ -267,6 +310,12 @@ export interface DayFoodStats {
   fat: number
 }
 
+export interface DayDrinkStats {
+  totalOz: number
+  /** oz per drink kind, only for kinds logged that day */
+  kinds: Partial<Record<DrinkKind, number>>
+}
+
 export interface WeekActivity {
   /** last 7 day keys, oldest first */
   days: Array<{ date: DayKey; workoutId?: string; routineName?: string }>
@@ -322,13 +371,25 @@ export interface DataAPI {
   // food
   listFood(date: DayKey): Promise<FoodEntry[]>
   addFood(e: Omit<FoodEntry, 'id'>): Promise<FoodEntry>
+  updateFood(e: FoodEntry): Promise<void>
   deleteFood(id: string): Promise<void>
+  /** most recent food entries, one per distinct name, newest first */
+  listRecentFood(limit: number): Promise<FoodEntry[]>
   getDayFoodStats(date: DayKey): Promise<DayFoodStats>
   listSavedMeals(): Promise<SavedMeal[]>
   saveSavedMeal(m: Omit<SavedMeal, 'id'> & { id?: string }): Promise<SavedMeal>
   // barcode product cache (device-local, not synced — it's public data)
   getCachedProduct(barcode: string): Promise<FoodProduct | undefined>
   cacheProduct(p: FoodProduct): Promise<void>
+
+  // drinks & hydration
+  listContainers(): Promise<Container[]>
+  saveContainer(c: Omit<Container, 'id'> & { id?: string }): Promise<Container>
+  deleteContainer(id: string): Promise<void>
+  listDrinks(date: DayKey): Promise<DrinkEntry[]>
+  addDrink(e: Omit<DrinkEntry, 'id'>): Promise<DrinkEntry>
+  deleteDrink(id: string): Promise<void>
+  getDayDrinkStats(date: DayKey): Promise<DayDrinkStats>
 
   // body records
   listBodyStats(limit?: number): Promise<BodyStatEntry[]>
@@ -344,6 +405,15 @@ export interface DataAPI {
   getWeekActivity(): Promise<WeekActivity>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
+}
+
+/** Sensible default meal slot from the current hour. */
+export function currentMealSlot(): MealSlot {
+  const h = new Date().getHours()
+  if (h < 11) return 'breakfast'
+  if (h < 15) return 'lunch'
+  if (h < 21) return 'dinner'
+  return 'snack'
 }
 
 /** Local YYYY-MM-DD for a Date (never UTC — gym sessions belong to the local day). */

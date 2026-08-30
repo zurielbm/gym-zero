@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 import type { EquipmentModelRecord } from './db'
 import { db, syncFlags, LEGACY_DB_NAME } from './db'
 import { normalizeQrUrl } from './qr'
-import type { BodyStatEntry, Exercise, Routine, SavedMeal, Settings, TapeEntry } from '../types'
+import type { BodyStatEntry, Container, Exercise, Routine, SavedMeal, Settings, TapeEntry } from '../types'
 
 const exercises: Exercise[] = [
   { id: 'ex-chest-press', name: 'Chest Press', muscleGroups: ['chest', 'triceps'], equipment: 'machine' },
@@ -79,6 +79,17 @@ const savedMeals: SavedMeal[] = [
   { id: 'sm-eggs', name: 'Eggs + toast', emoji: '🍳', calories: 420, protein: 28 },
 ]
 const settings: Settings = { calorieTarget: 2200, proteinTarget: 180, restSeconds: 90 }
+
+/**
+ * Starter drink containers so hydration is tappable on day one. Seeded whenever
+ * the user has no containers AND has never logged a drink — never re-added once
+ * drink logging is in use, so deliberate deletions stay deleted.
+ */
+const containers: Container[] = [
+  { id: 'ct-bottle', name: 'Bottle', emoji: '🚰', volumeOz: 24, kind: 'water', sortOrder: 0 },
+  { id: 'ct-glass', name: 'Glass', emoji: '🥛', volumeOz: 8, kind: 'water', sortOrder: 1 },
+  { id: 'ct-electrolyte', name: 'Electrolytes', emoji: '⚡', volumeOz: 20, kind: 'electrolyte', sortOrder: 2 },
+]
 
 /**
  * Optional personal seed. `src/data/seed.local.ts` is gitignored, so private
@@ -168,6 +179,14 @@ export function ensureSeeded(): Promise<void> {
       syncFlags.seeding = true
       try {
         await db.routines.add(strengthCheckRoutine)
+      } finally {
+        syncFlags.seeding = false
+      }
+    }
+    if (await db.containers.count() === 0 && await db.drinks.count() === 0) {
+      syncFlags.seeding = true
+      try {
+        await db.containers.bulkAdd(containers)
       } finally {
         syncFlags.seeding = false
       }

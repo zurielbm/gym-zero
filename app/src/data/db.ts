@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import { currentUser } from './auth-store'
 import type {
-  AiProgram, BodyStatEntry, EquipmentModel, Exercise, FoodEntry, FoodProduct, GymMachine, MachineAiInfo, Routine, SavedMeal, Settings, StrengthBaseline, TapeEntry, Workout, WorkoutSet,
+  AiProgram, BodyStatEntry, Container, DrinkEntry, EquipmentModel, Exercise, FoodEntry, FoodProduct, GymMachine, MachineAiInfo, Routine, SavedMeal, Settings, StrengthBaseline, TapeEntry, Workout, WorkoutSet,
 } from '../types'
 
 export interface EquipmentModelRecord extends EquipmentModel {
@@ -55,6 +55,8 @@ class GymTrackerDatabase extends Dexie {
   aiPrograms!: Table<AiProgram, string>
   baselines!: Table<StrengthBaseline, string>
   products!: Table<FoodProduct, string>
+  drinks!: Table<DrinkEntry, string>
+  containers!: Table<Container, string>
   settings!: Table<SettingsRecord, 'settings'>
   outbox!: Table<OutboxEntry, string>
 
@@ -91,6 +93,10 @@ class GymTrackerDatabase extends Dexie {
     // cache of public Open Food Facts data, not user data
     this.version(7).stores({
       products: 'barcode',
+    })
+    this.version(8).stores({
+      drinks: 'id,date',
+      containers: 'id',
     })
   }
 }

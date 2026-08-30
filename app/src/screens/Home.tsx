@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { BarbellIcon, GearIcon } from '../components/icons'
 import { STRENGTH_CHECK_ROUTINE_ID } from '../data/seed'
+import { todayWorkoutMinutes, waterTargetOz } from '../lib/hydration'
 import type { DayFoodStats, Routine, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
@@ -14,8 +15,8 @@ function greeting() {
   return 'Evening'
 }
 
-function MacroBar({ label, value, target, unit, alt }: {
-  label: string; value: number; target: number; unit: string; alt?: boolean
+function MacroBar({ label, value, target, unit, alt, water }: {
+  label: string; value: number; target: number; unit: string; alt?: boolean; water?: boolean
 }) {
   const pct = Math.min(100, target > 0 ? (value / target) * 100 : 0)
   return (
@@ -27,7 +28,7 @@ function MacroBar({ label, value, target, unit, alt }: {
           <span className="of"> / {target.toLocaleString()} {unit}</span>
         </span>
       </div>
-      <div className="bar"><i className={alt ? 'alt' : ''} style={{ width: `${pct}%` }} /></div>
+      <div className="bar"><i className={water ? 'water' : alt ? 'alt' : ''} style={{ width: `${pct}%` }} /></div>
     </>
   )
 }
@@ -35,13 +36,18 @@ function MacroBar({ label, value, target, unit, alt }: {
 export function HomeScreen() {
   const { api, go, settings, activeWorkout, setActiveWorkout, exercises } = useApp()
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+  const [waterOz, setWaterOz] = useState(0)
+  const [trainedMin, setTrainedMin] = useState(0)
   const [last, setLast] = useState<WorkoutSummary | null>(null)
   const [loadedLast, setLoadedLast] = useState(false)
   const [streakDays, setStreakDays] = useState(0)
   const [upNext, setUpNext] = useState<Routine | null>(null)
 
   useEffect(() => {
-    api.getDayFoodStats(toDayKey(new Date())).then(setStats)
+    const today = toDayKey(new Date())
+    api.getDayFoodStats(today).then(setStats)
+    api.getDayDrinkStats(today).then((ds) => setWaterOz(ds.totalOz))
+    todayWorkoutMinutes(api, today).then(setTrainedMin)
     api.listRecentWorkouts(1).then((ws) => { setLast(ws[0] ?? null); setLoadedLast(true) })
     api.getWeekActivity().then((wa) => setStreakDays(wa.days.filter((d) => d.workoutId).length))
     api.listRoutines().then((rs) => {
@@ -74,6 +80,7 @@ export function HomeScreen() {
 
           <MacroBar label="Calories" value={stats.calories} target={settings.calorieTarget} unit="kcal" />
           <MacroBar label="Protein" value={stats.protein} target={settings.proteinTarget} unit="g" alt />
+          <MacroBar label="Water" value={waterOz} target={waterTargetOz(settings, trainedMin)} unit="oz" water />
           {(stats.carbs > 0 || stats.fat > 0) && (
             <span className="small" style={{ display: 'block', marginTop: 8 }}>
               {stats.carbs}g carbs · {stats.fat}g fat so far today

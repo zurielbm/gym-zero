@@ -5,6 +5,7 @@ import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
 import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
 import { aiConfig, probeAi } from '../lib/ai'
+import { autoWaterTargetOz } from '../lib/hydration'
 import { probeFoodDb, SUPPORTED_SOURCE_SCHEMAS, type FoodDbMeta } from '../lib/food-sources'
 import { signOut } from '../lib/auth-client'
 import type { Settings, StrengthBaseline } from '../types'
@@ -54,6 +55,71 @@ function AccountCard() {
         <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} onClick={syncNow}>Sync now</button>
         <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={busy} onClick={() => void claim()}>Claim old data</button>
         <button className="ghost-btn danger" style={{ width: 'auto', padding: '10px 18px' }} onClick={() => void signOut()}>Sign out</button>
+      </div>
+    </div>
+  )
+}
+
+/** The numbers the Home and Fuel bars aim for; water is auto unless overridden. */
+function TargetsCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const [calories, setCalories] = useState(String(settings.calorieTarget))
+  const [protein, setProtein] = useState(String(settings.proteinTarget))
+  const [water, setWater] = useState(settings.waterTargetOz != null ? String(settings.waterTargetOz) : '')
+
+  const patch = async (p: Partial<Settings>) => {
+    await api.saveSettings({ ...settings, ...p })
+    await refreshSettings()
+  }
+
+  const autoWater = autoWaterTargetOz(settings.bodyWeightLb)
+
+  return (
+    <div className="card">
+      <span className="lab" style={{ display: 'block' }}>Daily targets</span>
+      <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
+        What the bars on Home and Fuel aim for. Water figures itself out from your body
+        weight and goes up on training days — only set a number to override that.
+      </span>
+      <div className="in-grid">
+        <div className="field" style={{ margin: 0 }}>
+          <label>Calories (kcal)</label>
+          <input
+            className="text-in" inputMode="numeric" value={calories}
+            onChange={(e) => setCalories(e.target.value)}
+            onBlur={() => {
+              const v = parseInt(calories, 10)
+              if (isFinite(v) && v > 0) void patch({ calorieTarget: v })
+              else setCalories(String(settings.calorieTarget))
+            }}
+          />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Protein (g)</label>
+          <input
+            className="text-in" inputMode="numeric" value={protein}
+            onChange={(e) => setProtein(e.target.value)}
+            onBlur={() => {
+              const v = parseInt(protein, 10)
+              if (isFinite(v) && v > 0) void patch({ proteinTarget: v })
+              else setProtein(String(settings.proteinTarget))
+            }}
+          />
+        </div>
+      </div>
+      <div className="field" style={{ margin: '10px 0 0' }}>
+        <label>Water (fl oz) — blank = automatic</label>
+        <input
+          className="text-in" inputMode="numeric" value={water}
+          placeholder={`auto · ${autoWater} oz${settings.bodyWeightLb ? '' : ' (record a weigh-in to personalize)'}`}
+          onChange={(e) => setWater(e.target.value)}
+          onBlur={() => {
+            if (!water.trim()) { void patch({ waterTargetOz: undefined }); return }
+            const v = parseInt(water, 10)
+            if (isFinite(v) && v > 0) void patch({ waterTargetOz: v })
+            else setWater(settings.waterTargetOz != null ? String(settings.waterTargetOz) : '')
+          }}
+        />
       </div>
     </div>
   )
@@ -197,8 +263,9 @@ function AiCard() {
       </button>
       {state === 'fail' && (
         <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>
-          {endpoint.trim().startsWith('http://') && window.location.protocol === 'https:'
-            ? 'Blocked by the browser: this app runs on https, so it can never call an http:// endpoint (mixed content) — an IP address can\'t get a certificate, so it has to be a name. On the proxy machine run "tailscale serve --bg localhost:8317", then use its https://…ts.net address here.'
+          {(endpoint.trim().startsWith('http://') && window.location.protocol === 'https:')
+            || /^(https?:\/\/)?\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(endpoint.trim().replace(/\/+$/, ''))
+            ? 'The browser can only call an https:// endpoint, and an IP address can\'t get a certificate — it has to be a name. On the proxy machine run "sudo tailscale serve --bg localhost:8317", then use its https://…ts.net address here (no port).'
             : "Saved, but the proxy didn't answer. Are you on Tailscale, and is the endpoint HTTPS?"}
         </span>
       )}
@@ -486,6 +553,7 @@ export function SettingsScreen() {
     <div className="page">
       <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Settings<span className="dot">.</span></h1>
       <AccountCard />
+      <TargetsCard />
       <AiCard />
       <FoodDbCard />
       <TrainingProfileCard />
