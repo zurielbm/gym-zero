@@ -5,6 +5,7 @@ import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
 import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
 import { aiConfig, probeAi } from '../lib/ai'
+import { probeFoodDb, SUPPORTED_SOURCE_SCHEMAS, type FoodDbMeta } from '../lib/food-sources'
 import { signOut } from '../lib/auth-client'
 import type { Settings, StrengthBaseline } from '../types'
 import { epleyMaxLb, toDayKey } from '../types'
@@ -205,6 +206,109 @@ function AiCard() {
   )
 }
 
+const MONTH_MS = 30 * 86400_000
+
+/** Where barcode nutrition comes from: public OFF API (zero setup) or a self-hosted mirror. */
+function FoodDbCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const [mode, setMode] = useState<'public' | 'self'>(settings.foodDbEndpoint ? 'self' : 'public')
+  const [endpoint, setEndpoint] = useState(settings.foodDbEndpoint ?? '')
+  const [state, setState] = useState<'idle' | 'testing' | 'ok' | 'importing' | 'fail' | 'unsupported'>('idle')
+  const [meta, setMeta] = useState<FoodDbMeta | null>(null)
+
+  const pickPublic = async () => {
+    setMode('public')
+    setState('idle')
+    if (settings.foodDbEndpoint) {
+      await api.saveSettings({ ...settings, foodDbEndpoint: undefined })
+      await refreshSettings()
+    }
+  }
+
+  const save = async () => {
+    const clean = endpoint.trim().replace(/\/+$/, '')
+    if (!clean) return
+    setState('testing')
+    let probed: FoodDbMeta | null = null
+    try {
+      probed = await probeFoodDb(clean)
+      setMeta(probed)
+      if (probed.sourceSchema && !SUPPORTED_SOURCE_SCHEMAS.includes(probed.sourceSchema)) {
+        setState('unsupported')
+        return // don't save a database this app version can't read
+      }
+    } catch { /* saved anyway — scans fall back to the public API until it answers */ }
+    await api.saveSettings({ ...settings, foodDbEndpoint: clean })
+    await refreshSettings()
+    setState(!probed ? 'fail' : probed.status === 'ready' ? 'ok' : 'importing')
+  }
+
+  const stale = meta?.exportDate && Date.now() - new Date(meta.exportDate).getTime() > 6 * MONTH_MS
+
+  return (
+    <div className="card">
+      <div className="row">
+        <span className="lab">Food database — barcode scans</span>
+        {state === 'ok' && <span className="lab lm">Connected ✓</span>}
+        {state === 'fail' && <span className="lab" style={{ color: 'var(--danger)' }}>Unreachable</span>}
+      </div>
+      <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
+        Open Food Facts is free and needs no setup. Self-hosted uses your own downloaded copy
+        on your server (see DEPLOY.md) — no rate limits, and scans fall back to Open Food Facts
+        whenever it can't be reached.
+      </span>
+      <Seg
+        options={[{ v: 'public', label: 'Open Food Facts' }, { v: 'self', label: 'Self-hosted' }]}
+        value={mode}
+        onPick={(v) => (v === 'public' ? void pickPublic() : (setMode('self'), setState('idle')))}
+      />
+      {mode === 'self' && (
+        <>
+          <div className="field">
+            <label>Server address</label>
+            <input
+              className="text-in" placeholder="http://your-server:8321" autoCapitalize="off" autoCorrect="off"
+              value={endpoint} onChange={(e) => { setEndpoint(e.target.value); setState('idle') }}
+            />
+          </div>
+          <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={state === 'testing'} onClick={() => void save()}>
+            {state === 'testing' ? 'Testing…' : 'Test & save'}
+          </button>
+          {state === 'ok' && meta && (
+            <span className="small" style={{ display: 'block', marginTop: 6, color: 'var(--lime)' }}>
+              ✓ Connected · {meta.exportDate ? `export from ${meta.exportDate}` : 'export date unknown'}
+              {meta.productCount ? ` · ${meta.productCount.toLocaleString()} products` : ''}
+            </span>
+          )}
+          {state === 'ok' && stale && (
+            <span className="small" style={{ display: 'block', marginTop: 4 }}>
+              That copy is over 6 months old — newer products may be missing. Refresh it on the server when you get a chance.
+            </span>
+          )}
+          {state === 'importing' && (
+            <span className="small" style={{ display: 'block', marginTop: 6 }}>
+              Saved — the server is still {meta?.status === 'downloading' ? 'downloading' : 'importing'} the database
+              {meta?.progress ? ` (${meta.progress})` : ''}. Scans use Open Food Facts until it's ready.
+            </span>
+          )}
+          {state === 'unsupported' && (
+            <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>
+              That server uses a database format this app version doesn't support ({meta?.sourceSchema}) — update the app.
+            </span>
+          )}
+          {state === 'fail' && (
+            <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>
+              {endpoint.trim().startsWith('http://') && window.location.protocol === 'https:'
+                ? 'Blocked by the browser: this app runs on https, so it can never call an http:// address (mixed content). Give the server an https domain like the others in DEPLOY.md.'
+                : "Saved, but the server didn't answer — check the address. Barcode scans fall back to Open Food Facts meanwhile."}
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 /** All the weights the user already knows they can do, one row per exercise. */
 function MyStrengthCard() {
   const { api, exercises } = useApp()
@@ -383,6 +487,7 @@ export function SettingsScreen() {
       <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Settings<span className="dot">.</span></h1>
       <AccountCard />
       <AiCard />
+      <FoodDbCard />
       <TrainingProfileCard />
       <MyStrengthCard />
       <DataCard />

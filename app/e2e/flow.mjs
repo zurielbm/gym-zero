@@ -371,6 +371,41 @@ await step('ai: set logger prefilled from program targets', async () => {
   await page.getByText('Choose routine').waitFor()
 })
 
+// ---- self-hosted food database (off-db sidecar mocked at the network layer) ----
+await page.route('https://food.e2e/**', (route) => {
+  const body = route.request().url().includes('/meta')
+    ? { status: 'ready', source: 'openfoodfacts', sourceSchema: 'off-v2', exportDate: '2026-08-01', productCount: 2123456, importedAt: 1754006400000 }
+    : {
+        status: 1,
+        product: {
+          product_name: 'Mirror Bar', brands: 'Selfhost',
+          nutriments: { 'energy-kcal_100g': 500, proteins_100g: 25, carbohydrates_100g: 50, fat_100g: 20 },
+          serving_quantity: 40, serving_size: '1 bar (40 g)',
+        },
+      }
+  return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+})
+
+await step('food db: configure self-hosted mirror in Settings (mocked)', async () => {
+  await page.locator('.tab', { hasText: 'Stats' }).click()
+  await page.locator('.page .icon-btn[title="Settings"]').click()
+  await page.locator('.seg button', { hasText: 'Self-hosted' }).click()
+  await page.locator('input[placeholder="http://your-server:8321"]').fill('https://food.e2e')
+  await page.locator('.card', { hasText: 'Food database' }).getByText('Test & save').click()
+  await page.getByText('2,123,456 products').waitFor()
+})
+
+await step('food db: barcode lookups hit the mirror first (mocked)', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.locator('.text-in').fill('4006381333931')
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Mirror Bar — Selfhost').waitFor() // came from the mirror, not the OFF mock
+  await page.locator('.qr-found').click()
+  await page.getByText('Servings · 1 = 1 bar (40 g)').waitFor()
+  await page.locator('.big-btn', { hasText: 'Log it' }).click()
+  await page.getByText('200 kcal · 10P · 20C · 8F').waitFor()
+})
+
 await page.screenshot({ path: 'e2e/final-home.png' })
 console.log(errors.length ? `PAGE ERRORS:\n${errors.join('\n')}` : 'NO PAGE ERRORS')
 await browser.close()

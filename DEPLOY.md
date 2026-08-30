@@ -74,6 +74,46 @@ across that person's devices — no passphrase step anymore.
   user via the Convex dashboard, or delete the user row and have them re-sign-up
   with the invite code (their data re-links by claiming — keep a backup first).
 
+## Self-hosted food database (optional)
+
+Barcode scans work out of the box against the free public Open Food Facts
+API — nothing to configure. If you'd rather serve lookups from your own copy
+of the database (no rate limits, no dependence on their servers), enable the
+`off-db` sidecar:
+
+1. **Enable the service** — it's behind a compose profile so normal deploys
+   don't pull a ~1 GB download:
+   ```bash
+   docker compose --profile off-db up -d --build off-db
+   ```
+   In Dokploy, set `COMPOSE_PROFILES=off-db` in the environment instead and
+   redeploy. Optional: `OFF_DB_PORT` (default 8321).
+2. **Wait for the import** (first boot only). The container downloads the
+   official Open Food Facts CSV export and imports it into SQLite in the
+   `off-db-data` volume — typically 10–20 minutes. Watch it:
+   ```bash
+   docker compose logs -f off-db     # "... products imported" progress lines
+   curl localhost:8321/meta          # {"status":"importing", ...} → {"status":"ready", ...}
+   ```
+   Already have the export downloaded? Mount it and point `OFF_CSV_FILE` at
+   it to skip the download.
+3. **Point the app at it**: Settings → **Food database** → *Self-hosted* →
+   enter the server address → **Test & save**. It shows the export date and
+   product count when connected. If the app is served over HTTPS the sidecar
+   needs an https:// address too (mixed content) — give it a domain the same
+   way as the other services.
+4. **Refreshing**: OFF publishes new exports daily. Re-import any time with:
+   ```bash
+   FORCE_REIMPORT=1 docker compose --profile off-db up -d --force-recreate off-db
+   ```
+   (then recreate once more without the variable so a later restart doesn't
+   re-import again). The app nudges you in Settings when the export is more
+   than ~6 months old.
+
+If the sidecar is down, still importing, or doesn't know a product, scans
+silently fall back to the public API — it can only make things better, never
+break scanning.
+
 ## Notes
 
 - Durable state lives in the `convex-data` volume — back it up like a database.

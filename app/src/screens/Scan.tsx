@@ -13,7 +13,8 @@ const sameTarget = (a: Found | null, value: string) =>
 
 /** Camera scanner for machine QR codes and food barcodes, with manual entry. */
 export function ScanScreen() {
-  const { api, go, activeWorkout } = useApp()
+  const { api, go, activeWorkout, settings } = useApp()
+  const foodDbEndpoint = settings.foodDbEndpoint
   const videoRef = useRef<HTMLVideoElement>(null)
   const [cameraOn, setCameraOn] = useState(false)
   const [found, setFound] = useState<Found | null>(null)
@@ -33,7 +34,7 @@ export function ScanScreen() {
     if (isFoodBarcode(value)) {
       show({ kind: 'food', code: value, state: 'loading' })
       try {
-        const product = await lookupBarcode(api, value)
+        const product = await lookupBarcode(api, value, foodDbEndpoint)
         if (sameTarget(foundRef.current, value)) show({ kind: 'food', code: value, state: 'done', product })
       } catch (err) {
         if (sameTarget(foundRef.current, value)) {
@@ -44,7 +45,7 @@ export function ScanScreen() {
     }
     const res = await api.resolveQr(value)
     show({ kind: 'machine', url: value, res })
-  }, [api])
+  }, [api, foodDbEndpoint])
 
   useEffect(() => {
     let stream: MediaStream | null = null

@@ -60,6 +60,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: self-hosted Open Food Facts mirror for barcode scans (no rate
+  # limits, works without the public API). Off by default — enable with
+  #   docker compose --profile off-db up -d
+  # or COMPOSE_PROFILES=off-db in Dokploy, then point Settings → Food
+  # database at it. First boot downloads + imports the OFF export (~1 GB
+  # download, 10–20 min); watch progress with `docker compose logs -f off-db`.
+  # See DEPLOY.md → "Self-hosted food database".
+  off-db:
+    profiles: ["off-db"]
+    build:
+      context: ./off-db
+    ports:
+      - "${OFF_DB_PORT:-8321}:8321"
+    volumes:
+      - off-db-data:/data
+    environment:
+      - FORCE_REIMPORT=${FORCE_REIMPORT:-}
+      - OFF_CSV_URL=${OFF_CSV_URL:-}
+      - OFF_CSV_FILE=${OFF_CSV_FILE:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8321/meta')"]
+      interval: 30s
+      start_period: 15s
+    restart: unless-stopped
+
   convex-deploy:
     build:
       context: ./app
@@ -74,3 +99,4 @@ services:
 
 volumes:
   convex-data:
+  off-db-data:

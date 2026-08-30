@@ -137,6 +137,8 @@ export interface Settings {
   aiEndpoint?: string
   aiApiKey?: string
   aiModel?: string
+  /** self-hosted food-database (off-db sidecar) base URL; barcode scans use the public OFF API when unset */
+  foodDbEndpoint?: string
   // ---- training profile (feeds AI starter programs; all optional) ----
   experience?: ExperienceLevel
   goal?: TrainingGoal
