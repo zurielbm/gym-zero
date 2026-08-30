@@ -117,7 +117,9 @@ export function ScanScreen() {
     const value = manual.trim()
     if (!value) return
     if (isFoodBarcode(value)) {
-      // result shows in the viewfinder card, same as a camera scan
+      // result shows in the viewfinder card, same as a camera scan;
+      // clearing the dedup guard lets Go retry after a failed lookup
+      foundRef.current = null
       await handleCode(value)
       return
     }
