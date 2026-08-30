@@ -242,6 +242,8 @@ export interface WorkoutSummary {
 export interface DayFoodStats {
   calories: number
   protein: number
+  carbs: number
+  fat: number
 }
 
 export interface WeekActivity {

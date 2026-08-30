@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApp } from '../AppContext'
 import type { BodyMetricKey, BodyStatEntry, TapeEntry, TapeSite } from '../types'
 import { toDayKey } from '../types'
@@ -60,6 +60,96 @@ function Delta({ cur, prev, direction }: { cur: number; prev?: number; direction
   )
 }
 
+const TREND_RANGES = [
+  { days: 30, chip: '30d', words: '30 days' },
+  { days: 90, chip: '90d', words: '90 days' },
+  { days: 365, chip: '1y', words: 'year' },
+]
+
+/** Any-metric trend over a real time window, driven by getBodyTrend. */
+function TrendCard({ stats, weightDirection }: { stats: BodyStatEntry[]; weightDirection?: 'up' | 'down' }) {
+  const { api } = useApp()
+  const [metric, setMetric] = useState<BodyMetricKey>('weightLb')
+  const [days, setDays] = useState(90)
+  const [points, setPoints] = useState<Array<{ at: number; value: number }> | null>(null)
+
+  // only offer metrics the user actually records
+  const available = useMemo(() => METRICS.filter((m) => stats.some((s) => s[m.key] !== undefined)), [stats])
+
+  useEffect(() => {
+    if (available.length && !available.some((m) => m.key === metric)) setMetric(available[0].key)
+  }, [available, metric])
+
+  useEffect(() => {
+    let alive = true
+    api.getBodyTrend(metric, days).then((p) => { if (alive) setPoints(p) })
+    return () => { alive = false }
+  }, [api, metric, days])
+
+  if (available.length === 0) return null
+
+  const def = METRICS.find((m) => m.key === metric)
+  const unit = def?.unit ? ` ${def.unit}` : ''
+  const direction = metric === 'weightLb' ? weightDirection : def?.direction
+  const range = TREND_RANGES.find((r) => r.days === days) ?? TREND_RANGES[1]
+  const shown = (points ?? []).slice(-32)
+  const values = shown.map((p) => p.value)
+  const max = Math.max(...values, 1)
+  const min = Math.min(...values, max)
+
+  const summary = (() => {
+    if (!points || shown.length < 2) return 'Not enough readings in this window yet — log a couple more.'
+    const first = shown[0].value
+    const last = shown[shown.length - 1].value
+    const diff = Math.round((last - first) * 10) / 10
+    if (diff === 0) return `Holding steady at ${last}${unit} over the last ${range.words}.`
+    const moved = `${diff < 0 ? 'Down' : 'Up'} ${Math.abs(diff)}${unit} over the last ${range.words}`
+    if (!direction) return `${moved}.`
+    const good = direction === 'down' ? diff < 0 : diff > 0
+    return good ? `${moved} — the right direction.` : `${moved}.`
+  })()
+
+  return (
+    <div className="card">
+      <span className="lab">Trend</span>
+      <div style={{ marginTop: 8 }}>
+        {available.map((m) => (
+          <span
+            key={m.key}
+            className={`chip btn${m.key === metric ? ' solid' : ''}`}
+            onClick={() => setMetric(m.key)}
+          >
+            {m.label}
+          </span>
+        ))}
+      </div>
+      {shown.length >= 2 && (
+        <div className="spark">
+          {shown.map((p, i) => (
+            <i
+              key={p.at}
+              className={i === shown.length - 1 ? 'hi' : ''}
+              style={{ height: `${Math.max(8, max === min ? 100 : ((p.value - min) / (max - min)) * 90 + 10)}%` }}
+            />
+          ))}
+        </div>
+      )}
+      <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>{summary}</span>
+      <div>
+        {TREND_RANGES.map((r) => (
+          <span
+            key={r.days}
+            className={`chip btn${r.days === days ? ' solid' : ''}`}
+            onClick={() => setDays(r.days)}
+          >
+            {r.chip}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function CompositionView() {
   const { api, settings, refreshSettings } = useApp()
   const [stats, setStats] = useState<BodyStatEntry[] | null>(null)
@@ -105,10 +195,6 @@ function CompositionView() {
     await reload()
   }
 
-  const weights = stats?.filter((s) => s.weightLb !== undefined).slice(0, 12).reverse() ?? []
-  const maxW = Math.max(1, ...weights.map((s) => s.weightLb ?? 0))
-  const minW = Math.min(...weights.map((s) => s.weightLb ?? 0), maxW)
-
   if (!stats) return <p className="small">Loading…</p>
 
   return (
@@ -143,20 +229,7 @@ function CompositionView() {
         </div>
       )}
 
-      {weights.length >= 2 && (
-        <div className="card">
-          <span className="lab">Weight · last {weights.length} readings</span>
-          <div className="spark">
-            {weights.map((s, i) => (
-              <i
-                key={s.id}
-                className={i === weights.length - 1 ? 'hi' : ''}
-                style={{ height: `${Math.max(8, maxW === minW ? 100 : (((s.weightLb ?? 0) - minW) / (maxW - minW)) * 90 + 10)}%` }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {stats.length >= 2 && <TrendCard stats={stats} weightDirection={weightDirection} />}
 
       <div className="card">
         <span className="lab">Goals</span>

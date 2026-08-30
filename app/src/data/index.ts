@@ -58,7 +58,23 @@ export const api: DataAPI = {
     }
     return full
   },
-  async deleteSet(id) { await ready(); await db.sets.delete(id) },
+  async deleteSet(id) {
+    await ready()
+    const set = await db.sets.get(id)
+    if (!set) return
+    await db.transaction('rw', db.sets, db.baselines, async () => {
+      await db.sets.delete(id)
+      // logSet may have promoted this set to the strength baseline; if it did,
+      // re-derive from the remaining sets so a mistyped set can't keep
+      // inflating weight suggestions after it's removed
+      const baseline = await db.baselines.get(set.exerciseId)
+      if (!baseline || baseline.weightLb !== set.weightLb || baseline.reps !== set.reps || baseline.at !== set.loggedAt) return
+      const remaining = (await db.sets.where('exerciseId').equals(set.exerciseId).toArray()).filter((other) => other.weightLb > 0 && other.reps > 0)
+      const best = remaining.sort((a, b) => epleyMaxLb(b.weightLb, b.reps) - epleyMaxLb(a.weightLb, a.reps))[0]
+      if (best) await db.baselines.put({ id: set.exerciseId, weightLb: best.weightLb, reps: best.reps, at: best.loggedAt })
+      else await db.baselines.delete(set.exerciseId)
+    })
+  },
   async getPrevPerformance(exerciseId, beforeWorkoutId) { await ready(); const before = beforeWorkoutId ? await db.workouts.get(beforeWorkoutId) : undefined; const candidates = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt) && (!before || workout.startedAt < before.startedAt)).sort((a, b) => b.startedAt - a.startedAt); for (const workout of candidates) { const sets = (await db.sets.where('workoutId').equals(workout.id).toArray()).filter((set) => set.exerciseId === exerciseId).sort((a, b) => a.setNumber - b.setNumber); if (sets.length) { const performance: PrevPerformance = { workoutDate: workout.date, sets: sets.map(({ weightLb, reps }) => ({ weightLb, reps })) }; return performance } } return undefined },
   async listBaselines() { await ready(); return (await db.baselines.toArray()).sort((a, b) => b.at - a.at) },
   async getBaseline(exerciseId) { await ready(); return db.baselines.get(exerciseId) },
@@ -69,7 +85,7 @@ export const api: DataAPI = {
   async listFood(date) { await ready(); return db.food.where('date').equals(date).toArray() },
   async addFood(entry) { await ready(); const full: FoodEntry = { ...entry, id: uid() }; await db.food.add(full); return full },
   async deleteFood(id) { await ready(); await db.food.delete(id) },
-  async getDayFoodStats(date) { await ready(); const food = await db.food.where('date').equals(date).toArray(); return { calories: food.reduce((total, entry) => total + entry.calories, 0), protein: food.reduce((total, entry) => total + entry.protein, 0) } },
+  async getDayFoodStats(date) { await ready(); const food = await db.food.where('date').equals(date).toArray(); return { calories: food.reduce((total, entry) => total + entry.calories, 0), protein: food.reduce((total, entry) => total + entry.protein, 0), carbs: food.reduce((total, entry) => total + (entry.carbs ?? 0), 0), fat: food.reduce((total, entry) => total + (entry.fat ?? 0), 0) } },
   async listSavedMeals() { await ready(); return db.savedMeals.toArray() },
   async saveSavedMeal(meal) { await ready(); const full: SavedMeal = { ...meal, id: meal.id ?? uid() }; await db.savedMeals.put(full); return full },
   async listBodyStats(limit) { await ready(); const q = db.bodyStats.orderBy('at').reverse(); return limit ? q.limit(limit).toArray() : q.toArray() },

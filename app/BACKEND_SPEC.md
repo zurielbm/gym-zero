@@ -73,7 +73,8 @@ Seed everything in the placeholder, EXPANDED as follows:
 - `cancelWorkout` deletes the workout AND its sets.
 - `getWeekActivity`: last 7 local days oldest-first with finished workout + routine
   name, plus 6 rolling 7-day volume buckets ending today, oldest-first.
-- `getDayFoodStats` sums calories/protein for the local day key.
+- `getDayFoodStats` sums calories/protein/carbs/fat for the local day key (carbs/fat treat missing as 0).
+- `deleteSet` re-derives the strength baseline from remaining sets when the deleted set had been promoted to the baseline.
 - Day keys are LOCAL dates via `toDayKey` from `src/types.ts`, never UTC.
 
 ## Structure suggestion (your call)

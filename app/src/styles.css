@@ -161,6 +161,7 @@ a { color: var(--ink); }
 .bar { height: 3px; border-radius: 0; background: var(--track); overflow: hidden; margin-top: 6px; }
 .bar i { display: block; height: 100%; border-radius: 0; background: var(--lime); transition: width 0.6s cubic-bezier(0.2, 0.9, 0.25, 1); }
 .bar i.alt { background: var(--ink); }
+.bar i.dim { background: var(--ghost); }
 .macro-row { display: flex; justify-content: space-between; align-items: baseline; padding-top: 10px; border-top: 1px solid var(--hairline); margin-top: 12px; }
 .macro-row .num { font-size: 1.5rem; }
 .macro-row .num .of { font-family: var(--body); font-size: 0.66rem; color: var(--muted); font-weight: 700; letter-spacing: 0; }
@@ -202,6 +203,7 @@ a { color: var(--ink); }
 }
 .set-done-btn:disabled { border-color: var(--hairline); color: var(--faint); cursor: default; }
 .set-done-btn.done { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+.set-done-btn.del-armed { background: transparent; border-color: var(--danger); color: var(--danger); }
 .exercise-pill {
   padding: 10px 0; border-radius: 0;
   background: transparent; border: 0; border-top: 1px solid var(--hairline);

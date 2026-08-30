@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
 import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
 
@@ -15,6 +15,9 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   const [machines, setMachines] = useState<GymMachine[]>([])
   const [baselines, setBaselines] = useState<Map<string, StrengthBaseline>>(new Map())
   const [elapsed, setElapsed] = useState('0:00')
+  // set id armed for deletion; disarms itself so a stray tap can't remove work
+  const [armedId, setArmedId] = useState<string | null>(null)
+  const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const workout = activeWorkout
 
@@ -136,9 +139,30 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     startRest(progTarget?.restSeconds)
   }
 
+  const disarm = () => {
+    if (disarmTimer.current) clearTimeout(disarmTimer.current)
+    disarmTimer.current = null
+    setArmedId(null)
+  }
+
+  const armDelete = (id: string) => {
+    if (disarmTimer.current) clearTimeout(disarmTimer.current)
+    setArmedId(id)
+    disarmTimer.current = setTimeout(() => setArmedId(null), 3000)
+  }
+
+  const deleteRow = async (s: WorkoutSet) => {
+    disarm()
+    await api.deleteSet(s.id)
+    setSets((old) => old.filter((other) => other.id !== s.id))
+    // the delete may have rolled the baseline back — re-read so suggestions stay honest
+    setBaselines(new Map((await api.listBaselines()).map((b) => [b.id, b])))
+  }
+
   const switchExercise = (id: string) => {
     setCurrentId(id)
     setDrafts({})
+    disarm()
   }
 
   const finish = async () => {
@@ -199,7 +223,13 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
                         {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
                       </div>
                       <div className="logged-val">{done.reps}</div>
-                      <button className="set-done-btn done">✓</button>
+                      <button
+                        className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
+                        title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
+                        onClick={() => (armedId === done.id ? void deleteRow(done) : armDelete(done.id))}
+                      >
+                        {armedId === done.id ? '✕' : '✓'}
+                      </button>
                     </div>
                   )
                 }

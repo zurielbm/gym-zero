@@ -12,12 +12,14 @@ export function HistoryScreen() {
   const [week, setWeek] = useState<WeekActivity | null>(null)
   const [recent, setRecent] = useState<WorkoutSummary[]>([])
   const [latestStat, setLatestStat] = useState<BodyStatEntry | undefined>(undefined)
+  const [weightTrend, setWeightTrend] = useState<Array<{ at: number; value: number }>>([])
   const [weightIn, setWeightIn] = useState('')
 
   useEffect(() => {
     api.getWeekActivity().then(setWeek)
     api.listRecentWorkouts(10).then(setRecent)
     api.getLatestBodyStat().then(setLatestStat)
+    api.getBodyTrend('weightLb', 30).then(setWeightTrend)
   }, [api])
 
   const saveWeight = async () => {
@@ -28,6 +30,7 @@ export function HistoryScreen() {
     await api.addBodyStat({ date: toDayKey(now), at: now.getTime(), weightLb: w })
     await refreshSettings()
     setLatestStat(await api.getLatestBodyStat())
+    setWeightTrend(await api.getBodyTrend('weightLb', 30))
     setWeightIn('')
   }
 
@@ -102,6 +105,22 @@ export function HistoryScreen() {
                 Open ›
               </button>
             </div>
+            {weightTrend.length >= 2 && (() => {
+              const values = weightTrend.map((p) => p.value)
+              const max = Math.max(...values)
+              const min = Math.min(...values)
+              return (
+                <div className="spark" style={{ height: 28 }}>
+                  {weightTrend.slice(-20).map((p, i, arr) => (
+                    <i
+                      key={p.at}
+                      className={i === arr.length - 1 ? 'hi' : ''}
+                      style={{ height: `${Math.max(10, max === min ? 100 : ((p.value - min) / (max - min)) * 90 + 10)}%` }}
+                    />
+                  ))}
+                </div>
+              )
+            })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <input className="text-in" inputMode="decimal" placeholder="182.4" value={weightIn}
                 onChange={(e) => setWeightIn(e.target.value)}

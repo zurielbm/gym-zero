@@ -34,7 +34,7 @@ function MacroBar({ label, value, target, unit, alt }: {
 
 export function HomeScreen() {
   const { api, go, settings, activeWorkout, setActiveWorkout, exercises } = useApp()
-  const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0 })
+  const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
   const [last, setLast] = useState<WorkoutSummary | null>(null)
   const [loadedLast, setLoadedLast] = useState(false)
   const [streakDays, setStreakDays] = useState(0)
@@ -69,6 +69,11 @@ export function HomeScreen() {
 
           <MacroBar label="Calories" value={stats.calories} target={settings.calorieTarget} unit="kcal" />
           <MacroBar label="Protein" value={stats.protein} target={settings.proteinTarget} unit="g" alt />
+          {(stats.carbs > 0 || stats.fat > 0) && (
+            <span className="small" style={{ display: 'block', marginTop: 8 }}>
+              {stats.carbs}g carbs · {stats.fat}g fat so far today
+            </span>
+          )}
 
           <div style={{ height: 18 }} />
           <button
@@ -135,7 +140,7 @@ export function HomeScreen() {
               <b style={{ fontSize: '0.9rem' }}>Log food</b>
               <span style={{ color: 'var(--lime)', fontWeight: 800 }}>＋</span>
             </div>
-            <span className="small">Calories and protein in a couple of taps</span>
+            <span className="small">Calories and macros in a couple of taps</span>
           </div>
         </div>
       </div>

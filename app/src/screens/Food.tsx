@@ -22,10 +22,10 @@ export function FoodScreen() {
   const { api, settings } = useApp()
   const today = toDayKey(new Date())
   const [entries, setEntries] = useState<FoodEntry[]>([])
-  const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0 })
+  const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
   const [saved, setSaved] = useState<SavedMeal[]>([])
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', calories: '', protein: '', meal: currentSlot() as MealSlot, save: false })
+  const [form, setForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', meal: currentSlot() as MealSlot, save: false })
   const ai = useAiAvailable(settings)
   const [aiText, setAiText] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
@@ -54,13 +54,15 @@ export function FoodScreen() {
   const quickAdd = async () => {
     const calories = parseInt(form.calories, 10)
     const protein = parseInt(form.protein, 10) || 0
+    const carbs = form.carbs.trim() ? parseInt(form.carbs, 10) || 0 : undefined
+    const fat = form.fat.trim() ? parseInt(form.fat, 10) || 0 : undefined
     if (!form.name.trim() || !isFinite(calories)) return
-    await api.addFood({ date: today, meal: form.meal, name: form.name.trim(), calories, protein })
+    await api.addFood({ date: today, meal: form.meal, name: form.name.trim(), calories, protein, carbs, fat })
     if (form.save) {
-      const m = await api.saveSavedMeal({ name: form.name.trim(), calories, protein })
+      const m = await api.saveSavedMeal({ name: form.name.trim(), calories, protein, carbs, fat })
       setSaved((old) => [...old, m])
     }
-    setForm({ name: '', calories: '', protein: '', meal: currentSlot(), save: false })
+    setForm({ name: '', calories: '', protein: '', carbs: '', fat: '', meal: currentSlot(), save: false })
     setShowAdd(false)
     refresh()
   }
@@ -131,6 +133,17 @@ export function FoodScreen() {
         </span>
       </div>
       <div className="bar"><i className="alt" style={{ width: `${proPct}%` }} /></div>
+      {/* carbs & fat are context, not targets: gray bars show their share of the calorie target */}
+      <div className="macro-row">
+        <span className="lab">Carbs</span>
+        <span className="num">{stats.carbs}<span className="of"> g</span></span>
+      </div>
+      <div className="bar"><i className="dim" style={{ width: `${Math.min(100, ((stats.carbs * 4) / settings.calorieTarget) * 100)}%` }} /></div>
+      <div className="macro-row">
+        <span className="lab">Fat</span>
+        <span className="num">{stats.fat}<span className="of"> g</span></span>
+      </div>
+      <div className="bar"><i className="dim" style={{ width: `${Math.min(100, ((stats.fat * 9) / settings.calorieTarget) * 100)}%` }} /></div>
 
       <div style={{ height: 18 }} />
       <div className="fd-grid">
@@ -152,7 +165,11 @@ export function FoodScreen() {
                       {e.detail && <span className="small" style={{ display: 'block' }}>{e.detail}</span>}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span className="small">{e.calories} kcal · {e.protein}P</span>
+                      <span className="small">
+                        {e.calories} kcal · {e.protein}P
+                        {e.carbs != null && ` · ${e.carbs}C`}
+                        {e.fat != null && ` · ${e.fat}F`}
+                      </span>
                       <button className="del" title="Delete" onClick={() => remove(e.id)}>✕</button>
                     </span>
                   </div>
@@ -190,17 +207,30 @@ export function FoodScreen() {
                 <span className="lab">{aiItems.reduce((t, i) => t + i.calories, 0)} kcal</span>
               </div>
               {aiItems.map((item, i) => (
-                <div key={i} style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
-                  <input className="text-in" style={{ flex: 1, minWidth: 0 }} value={item.name}
-                    onChange={(e) => patchAiItem(i, { name: e.target.value })} />
-                  <input className="text-in" style={{ width: 58 }} inputMode="numeric" title="Calories" value={item.calories}
-                    onChange={(e) => patchAiItem(i, { calories: parseInt(e.target.value, 10) || 0 })} />
-                  <input className="text-in" style={{ width: 44 }} inputMode="numeric" title="Protein (g)" value={item.protein}
-                    onChange={(e) => patchAiItem(i, { protein: parseInt(e.target.value, 10) || 0 })} />
-                  <button className="del" title="Remove" onClick={() => setAiItems((items) => items!.filter((_, j) => j !== i))}>✕</button>
+                <div key={i} style={{ marginTop: 10 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input className="text-in" style={{ flex: 1, minWidth: 0 }} value={item.name}
+                      onChange={(e) => patchAiItem(i, { name: e.target.value })} />
+                    <button className="del" title="Remove" onClick={() => setAiItems((items) => items!.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    {([
+                      { key: 'calories', label: 'kcal' },
+                      { key: 'protein', label: 'Protein' },
+                      { key: 'carbs', label: 'Carbs' },
+                      { key: 'fat', label: 'Fat' },
+                    ] as const).map((f) => (
+                      <div key={f.key} style={{ flex: 1, minWidth: 0 }}>
+                        <span className="lab" style={{ display: 'block', fontSize: '0.52rem', marginBottom: 3 }}>{f.label}</span>
+                        <input className="text-in" style={{ padding: '8px 6px', textAlign: 'center' }} inputMode="numeric"
+                          value={item[f.key] ?? ''}
+                          onChange={(e) => patchAiItem(i, { [f.key]: parseInt(e.target.value, 10) || 0 })} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
-              <span className="small" style={{ display: 'block', marginTop: 6 }}>Name · kcal · protein — estimates, tweak anything.</span>
+              <span className="small" style={{ display: 'block', marginTop: 6 }}>Grams for protein, carbs and fat — estimates, tweak anything.</span>
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Meal</label>
                 <select className="text-in" value={aiMeal} onChange={(e) => setAiMeal(e.target.value as MealSlot)}>
@@ -253,6 +283,21 @@ export function FoodScreen() {
                     onChange={(e) => setForm({ ...form, protein: e.target.value })} />
                 </div>
               </div>
+              <div className="in-grid">
+                <div className="field">
+                  <label>Carbs (g) — optional</label>
+                  <input className="text-in" inputMode="numeric" value={form.carbs} placeholder="55"
+                    onChange={(e) => setForm({ ...form, carbs: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Fat (g) — optional</label>
+                  <input className="text-in" inputMode="numeric" value={form.fat} placeholder="20"
+                    onChange={(e) => setForm({ ...form, fat: e.target.value })} />
+                </div>
+              </div>
+              <span className="small" style={{ display: 'block', margin: '-4px 0 10px' }}>
+                Skip carbs and fat if you don't know them — calories and protein are what matter for your goal.
+              </span>
               <div className="field">
                 <label>Meal</label>
                 <select className="text-in" value={form.meal}
@@ -271,7 +316,7 @@ export function FoodScreen() {
             </div>
           ) : (
             <button className="ghost-btn" onClick={() => setShowAdd(true)}>
-              ＋ Quick add (name · kcal · protein)
+              ＋ Quick add (name · kcal · macros)
             </button>
           )}
         </div>
