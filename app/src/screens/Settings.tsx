@@ -386,6 +386,11 @@ export function SettingsScreen() {
       <TrainingProfileCard />
       <MyStrengthCard />
       <DataCard />
+      <p className="small" style={{ marginTop: 18 }}>
+        Barcode nutrition contains information from{' '}
+        <a href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer">Open Food Facts</a>,
+        made available under the Open Database License (ODbL) v1.0.
+      </p>
     </div>
   )
 }

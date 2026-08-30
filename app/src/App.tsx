@@ -106,7 +106,7 @@ export default function App() {
           {screen.name === 'machine' && (
             <MachineScreen machineId={screen.machineId} modelId={screen.modelId} qrUrl={screen.qrUrl} />
           )}
-          {screen.name === 'food' && <FoodScreen />}
+          {screen.name === 'food' && <FoodScreen prefill={screen.prefill} />}
           {screen.name === 'history' && <HistoryScreen />}
           {screen.name === 'body' && <BodyScreen />}
           {screen.name === 'summary' && <SummaryScreen workoutId={screen.workoutId} />}

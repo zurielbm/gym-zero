@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { DataAPI, Exercise, Settings, Workout } from './types'
+import type { DataAPI, Exercise, FoodProduct, Settings, Workout } from './types'
 
 export type Screen =
   | { name: 'home' }
@@ -8,7 +8,7 @@ export type Screen =
   | { name: 'workout'; exerciseId?: string }
   | { name: 'scan' }
   | { name: 'machine'; machineId?: string; modelId?: string; qrUrl?: string }
-  | { name: 'food' }
+  | { name: 'food'; prefill?: FoodProduct }
   | { name: 'history' }
   | { name: 'body' }
   | { name: 'summary'; workoutId: string }

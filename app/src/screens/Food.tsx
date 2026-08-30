@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { aiConfig, parseFood, useAiAvailable, type AiFoodItem } from '../lib/ai'
-import type { DayFoodStats, FoodEntry, MealSlot, SavedMeal } from '../types'
+import type { DayFoodStats, FoodEntry, FoodProduct, MealSlot, SavedMeal } from '../types'
 import { toDayKey } from '../types'
 
 const slots: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
@@ -18,7 +18,82 @@ function currentSlot(): MealSlot {
   return 'snack'
 }
 
-export function FoodScreen() {
+/** Scanned barcode → portion → log. Servings when the label declares one, grams otherwise. */
+function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onDone: () => void; onDismiss: () => void }) {
+  const { api } = useApp()
+  const [name, setName] = useState(product.brand ? `${product.name} (${product.brand})` : product.name)
+  const [mode, setMode] = useState<'serving' | 'grams'>(product.servingG ? 'serving' : 'grams')
+  const [qty, setQty] = useState('1')
+  const [grams, setGrams] = useState(product.servingG ? String(product.servingG) : '100')
+  const [meal, setMeal] = useState<MealSlot>(currentSlot())
+
+  const g = mode === 'serving'
+    ? (parseFloat(qty) || 0) * (product.servingG ?? 0)
+    : parseFloat(grams) || 0
+  const macro = (per100: number) => Math.round((per100 * g) / 100)
+  const calories = macro(product.per100g.calories)
+  const protein = macro(product.per100g.protein)
+  const carbs = macro(product.per100g.carbs)
+  const fat = macro(product.per100g.fat)
+
+  const add = async () => {
+    if (g <= 0 || !name.trim()) return
+    await api.addFood({
+      date: toDayKey(new Date()), meal, name: name.trim(),
+      detail: mode === 'serving'
+        ? `${qty} serving${qty === '1' ? '' : 's'} · ${Math.round(g)} g`
+        : `${Math.round(g)} g`,
+      calories, protein, carbs, fat,
+    })
+    onDone()
+  }
+
+  return (
+    <div className="card">
+      <div className="row">
+        <span className="lab lm">Scanned — how much did you have?</span>
+        <button className="del" title="Dismiss" onClick={onDismiss}>✕</button>
+      </div>
+      <div className="field" style={{ marginTop: 8 }}>
+        <label>Food</label>
+        <input className="text-in" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      {product.servingG ? (
+        <div className="seg" style={{ marginBottom: 10 }}>
+          <button className={mode === 'serving' ? 'on' : ''} onClick={() => setMode('serving')}>Servings</button>
+          <button className={mode === 'grams' ? 'on' : ''} onClick={() => setMode('grams')}>Grams</button>
+        </div>
+      ) : null}
+      {mode === 'serving' ? (
+        <div className="field">
+          <label>Servings · 1 = {product.servingLabel ?? `${product.servingG} g`}</label>
+          <input className="text-in" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+        </div>
+      ) : (
+        <div className="field">
+          <label>Grams</label>
+          <input className="text-in" inputMode="decimal" value={grams} onChange={(e) => setGrams(e.target.value)} />
+        </div>
+      )}
+      <span className="small" style={{ display: 'block', margin: '0 0 10px', ...(g > 0 ? { color: 'var(--lime)' } : {}) }}>
+        {g > 0
+          ? `≈ ${calories} kcal · ${protein}g protein · ${carbs}g carbs · ${fat}g fat`
+          : 'Enter how much you had and the numbers fill in.'}
+      </span>
+      <div className="field">
+        <label>Meal</label>
+        <select className="text-in" value={meal} onChange={(e) => setMeal(e.target.value as MealSlot)}>
+          {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
+        </select>
+      </div>
+      <button className="big-btn" disabled={g <= 0 || !name.trim()} onClick={() => void add()}>
+        Log it →
+      </button>
+    </div>
+  )
+}
+
+export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
   const { api, settings } = useApp()
   const today = toDayKey(new Date())
   const [entries, setEntries] = useState<FoodEntry[]>([])
@@ -32,6 +107,7 @@ export function FoodScreen() {
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiItems, setAiItems] = useState<AiFoodItem[] | null>(null)
   const [aiMeal, setAiMeal] = useState<MealSlot>(currentSlot())
+  const [scanned, setScanned] = useState<FoodProduct | undefined>(prefill)
 
   const refresh = useCallback(async () => {
     setEntries(await api.listFood(today))
@@ -187,6 +263,13 @@ export function FoodScreen() {
         </div>
 
         <div className="fd-side">
+          {scanned && (
+            <BarcodeCard
+              product={scanned}
+              onDone={() => { setScanned(undefined); void refresh() }}
+              onDismiss={() => setScanned(undefined)}
+            />
+          )}
           {saved.length > 0 && (
             <>
               <p className="section-label">Quick add — saved meals</p>

@@ -101,6 +101,25 @@ export interface SavedMeal {
   fat?: number
 }
 
+/**
+ * Nutrition for one packaged product, cached from the food database by
+ * barcode. Cached rows are raw individual lookups (Open Food Facts, ODbL) —
+ * kept separate from the user's own food log on purpose.
+ */
+export interface FoodProduct {
+  /** EAN/UPC digits */
+  barcode: string
+  name: string
+  brand?: string
+  /** macros per 100 g (or 100 ml for drinks) */
+  per100g: { calories: number; protein: number; carbs: number; fat: number }
+  /** grams in one declared serving, when the label states one */
+  servingG?: number
+  /** label text for one serving, e.g. "45 g" or "2 crackers (30 g)" */
+  servingLabel?: string
+  fetchedAt: number
+}
+
 export type ExperienceLevel = 'new' | 'returning' | 'experienced'
 export type TrainingGoal = 'muscle' | 'recomp' | 'fat-loss' | 'strength' | 'general'
 
@@ -305,6 +324,9 @@ export interface DataAPI {
   getDayFoodStats(date: DayKey): Promise<DayFoodStats>
   listSavedMeals(): Promise<SavedMeal[]>
   saveSavedMeal(m: Omit<SavedMeal, 'id'> & { id?: string }): Promise<SavedMeal>
+  // barcode product cache (device-local, not synced — it's public data)
+  getCachedProduct(barcode: string): Promise<FoodProduct | undefined>
+  cacheProduct(p: FoodProduct): Promise<void>
 
   // body records
   listBodyStats(limit?: number): Promise<BodyStatEntry[]>

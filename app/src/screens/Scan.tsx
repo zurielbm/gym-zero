@@ -1,32 +1,56 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { useApp } from '../AppContext'
-import type { QrResolution } from '../types'
+import { isFoodBarcode, lookupBarcode } from '../lib/food-sources'
+import type { FoodProduct, QrResolution } from '../types'
 
-interface Found { url: string; res: QrResolution }
+type Found =
+  | { kind: 'machine'; url: string; res: QrResolution }
+  | { kind: 'food'; code: string; state: 'loading' | 'done' | 'error'; product?: FoodProduct | null; error?: string }
 
-/** Camera QR scanner with BarcodeDetector, jsQR fallback, and manual URL entry. */
+const sameTarget = (a: Found | null, value: string) =>
+  a?.kind === 'machine' ? a.url === value : a?.kind === 'food' ? a.code === value : false
+
+/** Camera scanner for machine QR codes and food barcodes, with manual entry. */
 export function ScanScreen() {
   const { api, go, activeWorkout } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [cameraOn, setCameraOn] = useState(false)
   const [found, setFound] = useState<Found | null>(null)
   const [manual, setManual] = useState('')
+  // jsQR can't read 1D barcodes, so without BarcodeDetector food scanning needs manual digits
+  const [qrOnly, setQrOnly] = useState(false)
   const foundRef = useRef<Found | null>(null)
+
+  const show = (f: Found) => {
+    foundRef.current = f
+    setFound(f)
+  }
+
+  const handleCode = useCallback(async (raw: string) => {
+    const value = raw.trim()
+    if (!value || sameTarget(foundRef.current, value)) return
+    if (isFoodBarcode(value)) {
+      show({ kind: 'food', code: value, state: 'loading' })
+      try {
+        const product = await lookupBarcode(api, value)
+        if (sameTarget(foundRef.current, value)) show({ kind: 'food', code: value, state: 'done', product })
+      } catch (err) {
+        if (sameTarget(foundRef.current, value)) {
+          show({ kind: 'food', code: value, state: 'error', error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+      return
+    }
+    const res = await api.resolveQr(value)
+    show({ kind: 'machine', url: value, res })
+  }, [api])
 
   useEffect(() => {
     let stream: MediaStream | null = null
     let raf = 0
     let stopped = false
     const canvas = document.createElement('canvas')
-
-    const handleUrl = async (url: string) => {
-      if (foundRef.current?.url === url) return
-      const res = await api.resolveQr(url)
-      const f = { url, res }
-      foundRef.current = f
-      setFound(f)
-    }
 
     const start = async () => {
       try {
@@ -39,7 +63,8 @@ export function ScanScreen() {
         setCameraOn(true)
 
         const Detector = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => { detect(v: HTMLVideoElement): Promise<Array<{ rawValue: string }>> } }).BarcodeDetector
-        const detector = Detector ? new Detector({ formats: ['qr_code'] }) : null
+        const detector = Detector ? new Detector({ formats: ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] }) : null
+        setQrOnly(!detector)
         let lastScan = 0
 
         const loop = async () => {
@@ -51,7 +76,7 @@ export function ScanScreen() {
             try {
               if (detector) {
                 const codes = await detector.detect(video)
-                if (codes[0]?.rawValue) await handleUrl(codes[0].rawValue)
+                if (codes[0]?.rawValue) await handleCode(codes[0].rawValue)
               } else {
                 canvas.width = video.videoWidth
                 canvas.height = video.videoHeight
@@ -59,7 +84,7 @@ export function ScanScreen() {
                 g.drawImage(video, 0, 0)
                 const img = g.getImageData(0, 0, canvas.width, canvas.height)
                 const code = jsQR(img.data, img.width, img.height)
-                if (code?.data) await handleUrl(code.data)
+                if (code?.data) await handleCode(code.data)
               }
             } catch { /* keep scanning */ }
           }
@@ -76,17 +101,51 @@ export function ScanScreen() {
       cancelAnimationFrame(raf)
       stream?.getTracks().forEach((t) => t.stop())
     }
-  }, [api])
+  }, [handleCode])
 
   const open = (f: Found) => {
+    if (f.kind === 'food') {
+      if (f.state === 'done' && f.product) go({ name: 'food', prefill: f.product })
+      else if (f.state !== 'loading') go({ name: 'food' })
+      return
+    }
     if (f.res.machine) go({ name: 'machine', machineId: f.res.machine.id })
     else go({ name: 'machine', modelId: f.res.model?.id, qrUrl: f.url })
   }
 
   const resolveManual = async () => {
-    const url = manual.trim()
-    if (!url) return
-    open({ url, res: await api.resolveQr(url) })
+    const value = manual.trim()
+    if (!value) return
+    if (isFoodBarcode(value)) {
+      // result shows in the viewfinder card, same as a camera scan
+      await handleCode(value)
+      return
+    }
+    open({ kind: 'machine', url: value, res: await api.resolveQr(value) })
+  }
+
+  const foodCard = (f: Found & { kind: 'food' }) => {
+    const badge = f.state === 'loading' ? '…' : f.state === 'error' ? '!' : f.product ? '✓' : '?'
+    const title = f.state === 'loading' ? 'Looking it up…'
+      : f.state === 'error' ? f.error
+      : f.product ? (f.product.brand ? `${f.product.name} — ${f.product.brand}` : f.product.name)
+      : 'Not in the food database'
+    const sub = f.state === 'done' && f.product
+      ? `${f.product.per100g.calories} kcal per 100 g · tap to log it`
+      : f.state === 'done' ? 'Tap to add it by hand instead'
+      : `Barcode ${f.code}`
+    return (
+      <div className="qr-found" onClick={() => open(f)}>
+        <div className="qr-badge">{badge}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <b style={{ fontSize: '0.85rem' }}>{title}</b>
+          <span className="small" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {sub}
+          </span>
+        </div>
+        {f.state !== 'loading' && <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>}
+      </div>
+    )
   }
 
   return (
@@ -97,9 +156,9 @@ export function ScanScreen() {
       >
         ‹ Back
       </button>
-      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan machine<span className="dot">.</span></h1>
+      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan<span className="dot">.</span></h1>
       <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-        Point at the QR sticker on the machine
+        Point at a machine QR or a food barcode
       </p>
 
       <div className="viewfinder">
@@ -107,7 +166,7 @@ export function ScanScreen() {
         <div className="corner tl" /><div className="corner tr" />
         <div className="corner bl" /><div className="corner br" />
         <div className="scanline" />
-        {found && (
+        {found && (found.kind === 'food' ? foodCard(found) : (
           <div className="qr-found" onClick={() => open(found)}>
             <div className="qr-badge">✓</div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -125,19 +184,24 @@ export function ScanScreen() {
             </div>
             <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>
           </div>
-        )}
+        ))}
       </div>
 
       {!cameraOn && (
         <p className="small" style={{ marginTop: 0 }}>
-          Camera unavailable — paste the machine's QR link instead.
+          Camera unavailable — type the QR link or barcode digits instead.
+        </p>
+      )}
+      {cameraOn && qrOnly && (
+        <p className="small" style={{ marginTop: 0 }}>
+          This browser can only scan QR codes — for a food barcode, type its digits below.
         </p>
       )}
       <div className="field">
-        <label>Or enter the QR link manually</label>
+        <label>Or enter a QR link / barcode digits</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
-            className="text-in" placeholder="https://www.youtube.com/watch?v=…"
+            className="text-in" placeholder="https://… or 0123456789012"
             value={manual} onChange={(e) => setManual(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && resolveManual()}
           />
@@ -148,8 +212,8 @@ export function ScanScreen() {
       </div>
 
       <p className="small">
-        Known code → opens the machine instantly.<br />
-        Unknown code → you name &amp; map it once, remembered forever.
+        Machine QR → opens the machine; new codes are named &amp; mapped once, remembered forever.<br />
+        Food barcode → nutrition from Open Food Facts, ready to log.
       </p>
     </div>
   )

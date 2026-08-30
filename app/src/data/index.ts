@@ -89,6 +89,8 @@ export const api: DataAPI = {
   async getDayFoodStats(date) { await ready(); const food = await db.food.where('date').equals(date).toArray(); return { calories: food.reduce((total, entry) => total + entry.calories, 0), protein: food.reduce((total, entry) => total + entry.protein, 0), carbs: food.reduce((total, entry) => total + (entry.carbs ?? 0), 0), fat: food.reduce((total, entry) => total + (entry.fat ?? 0), 0) } },
   async listSavedMeals() { await ready(); return db.savedMeals.toArray() },
   async saveSavedMeal(meal) { await ready(); const full: SavedMeal = { ...meal, id: meal.id ?? uid() }; await db.savedMeals.put(full); return full },
+  async getCachedProduct(barcode) { await ready(); return db.products.get(barcode) },
+  async cacheProduct(product) { await ready(); await db.products.put(product) },
   async listBodyStats(limit) { await ready(); const q = db.bodyStats.orderBy('at').reverse(); return limit ? q.limit(limit).toArray() : q.toArray() },
   async addBodyStat(entry) { await ready(); const full: BodyStatEntry = { ...entry, id: uid() }; const settings = await db.settings.get('settings'); if (full.weightLb && full.bmi === undefined && settings?.heightIn) full.bmi = Math.round(((703 * full.weightLb) / settings.heightIn ** 2) * 10) / 10; await db.transaction('rw', db.bodyStats, db.settings, async () => { await db.bodyStats.add(full); const newest = await db.bodyStats.orderBy('at').reverse().first(); if (settings && full.weightLb && newest?.id === full.id) await db.settings.put({ ...settings, bodyWeightLb: full.weightLb }) }); return full },
   async deleteBodyStat(id) { await ready(); await db.bodyStats.delete(id) },
