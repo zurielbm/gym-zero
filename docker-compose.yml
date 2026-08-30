@@ -18,6 +18,7 @@ services:
       args:
         VITE_CONVEX_URL: ${VITE_CONVEX_URL}
         VITE_CONVEX_SITE_URL: ${VITE_CONVEX_SITE_URL}
+        VITE_OFF_APP_NAME: ${VITE_OFF_APP_NAME:-}
     ports:
       - "${APP_PORT:-8080}:80"
     depends_on:

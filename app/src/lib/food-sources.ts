@@ -17,8 +17,10 @@ import type { DataAPI, FoodProduct } from '../types'
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v2/product'
 const OFF_FIELDS = 'product_name,brands,nutriments,serving_quantity,serving_size'
-// identifies the app to OFF; browsers can't set User-Agent, so query params it is
-const OFF_APP = 'app_name=gym-zero&app_version=1.0'
+// identifies the app to OFF; browsers can't set User-Agent, so query params it
+// is. Overridable per deployment (VITE_OFF_APP_NAME) — purely a courtesy
+// identifier so OFF can see who's calling; their rate limits are per IP.
+const OFF_APP = `app_name=${encodeURIComponent(import.meta.env.VITE_OFF_APP_NAME || 'gym-zero')}&app_version=1.0`
 
 /** EAN-8 / UPC-A / EAN-13 — the barcode shapes food packaging uses. */
 export const isFoodBarcode = (raw: string): boolean => /^\d{8}$|^\d{12,13}$/.test(raw.trim())

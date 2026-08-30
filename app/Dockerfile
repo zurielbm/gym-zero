@@ -4,8 +4,11 @@ WORKDIR /app
 # /api/auth/*); leave both unset for a local-only, login-free build
 ARG VITE_CONVEX_URL
 ARG VITE_CONVEX_SITE_URL
+# how barcode lookups identify this deployment to Open Food Facts (optional)
+ARG VITE_OFF_APP_NAME
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
 ENV VITE_CONVEX_SITE_URL=$VITE_CONVEX_SITE_URL
+ENV VITE_OFF_APP_NAME=$VITE_OFF_APP_NAME
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
