@@ -5,6 +5,8 @@ dist
 src/data/seed.local.ts
 e2e/fail-*.png
 e2e/final-*.png
+# generated from the committed .png by e2e/scan-camera.mjs
+e2e/.fixtures/*.y4m
 .DS_Store
 .claude
 tsconfig.tsbuildinfo

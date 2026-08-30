@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import jsQR from 'jsqr'
 import { useApp } from '../AppContext'
+import { createScanDetector } from '../lib/barcode'
 import { isFoodBarcode, lookupBarcode } from '../lib/food-sources'
 import type { FoodProduct, QrResolution } from '../types'
 
@@ -19,8 +19,6 @@ export function ScanScreen() {
   const [cameraOn, setCameraOn] = useState(false)
   const [found, setFound] = useState<Found | null>(null)
   const [manual, setManual] = useState('')
-  // jsQR can't read 1D barcodes, so without BarcodeDetector food scanning needs manual digits
-  const [qrOnly, setQrOnly] = useState(false)
   const foundRef = useRef<Found | null>(null)
 
   const show = (f: Found) => {
@@ -51,7 +49,6 @@ export function ScanScreen() {
     let stream: MediaStream | null = null
     let raf = 0
     let stopped = false
-    const canvas = document.createElement('canvas')
 
     const start = async () => {
       try {
@@ -63,9 +60,7 @@ export function ScanScreen() {
         await videoRef.current.play()
         setCameraOn(true)
 
-        const Detector = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => { detect(v: HTMLVideoElement): Promise<Array<{ rawValue: string }>> } }).BarcodeDetector
-        const detector = Detector ? new Detector({ formats: ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] }) : null
-        setQrOnly(!detector)
+        const detector = createScanDetector()
         let lastScan = 0
 
         const loop = async () => {
@@ -75,18 +70,8 @@ export function ScanScreen() {
           if (video && video.readyState >= 2 && now - lastScan > 350) {
             lastScan = now
             try {
-              if (detector) {
-                const codes = await detector.detect(video)
-                if (codes[0]?.rawValue) await handleCode(codes[0].rawValue)
-              } else {
-                canvas.width = video.videoWidth
-                canvas.height = video.videoHeight
-                const g = canvas.getContext('2d', { willReadFrequently: true })!
-                g.drawImage(video, 0, 0)
-                const img = g.getImageData(0, 0, canvas.width, canvas.height)
-                const code = jsQR(img.data, img.width, img.height)
-                if (code?.data) await handleCode(code.data)
-              }
+              const codes = await detector.detect(video)
+              if (codes[0]?.rawValue) await handleCode(codes[0].rawValue)
             } catch { /* keep scanning */ }
           }
           raf = requestAnimationFrame(loop)
@@ -193,11 +178,6 @@ export function ScanScreen() {
       {!cameraOn && (
         <p className="small" style={{ marginTop: 0 }}>
           Camera unavailable — type the QR link or barcode digits instead.
-        </p>
-      )}
-      {cameraOn && qrOnly && (
-        <p className="small" style={{ marginTop: 0 }}>
-          This browser can only scan QR codes — for a food barcode, type its digits below.
         </p>
       )}
       <div className="field">
