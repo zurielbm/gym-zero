@@ -129,9 +129,9 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
         {items.map((item, i) => (
           <div key={item.exerciseId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
             <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <button className="icon-btn" style={{ padding: 0, fontSize: '0.7rem' }} title="Move up"
+              <button className="icon-btn" style={{ fontSize: '0.8rem', minWidth: 40, minHeight: 30 }} title="Move up"
                 disabled={i === 0} onClick={() => move(i, -1)}>▲</button>
-              <button className="icon-btn" style={{ padding: 0, fontSize: '0.7rem' }} title="Move down"
+              <button className="icon-btn" style={{ fontSize: '0.8rem', minWidth: 40, minHeight: 30 }} title="Move down"
                 disabled={i === items.length - 1} onClick={() => move(i, 1)}>▼</button>
             </span>
             <span className="small" style={{ flex: 1, color: 'var(--ink)', minWidth: 0 }}>

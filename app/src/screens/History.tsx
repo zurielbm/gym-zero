@@ -62,7 +62,9 @@ export function HistoryScreen() {
                 <div key={d.date} className={`cal-day${d.workoutId ? ' did' : ''}`}>
                   <b>{dayLetter(d.date)}</b>
                   <span className="blk" />
-                  <span style={{ fontSize: '0.5rem' }}>{d.routineName ?? (d.workoutId ? '✓' : '—')}</span>
+                  <span style={{ fontSize: '0.625rem', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.routineName ?? (d.workoutId ? '✓' : '—')}
+                  </span>
                 </div>
               ))}
             </div>
@@ -101,7 +103,7 @@ export function HistoryScreen() {
                   {settings.bodyWeightGoalLb ? <span className="small" style={{ fontFamily: 'var(--body)' }}> · goal {settings.bodyWeightGoalLb} lb</span> : null}
                 </span>
               </div>
-              <button className="ghost-btn" style={{ width: 'auto', padding: '8px 14px' }} onClick={() => go({ name: 'body' })}>
+              <button className="ghost-btn" style={{ width: 'auto', padding: '12px 16px' }} onClick={() => go({ name: 'body' })}>
                 Open ›
               </button>
             </div>

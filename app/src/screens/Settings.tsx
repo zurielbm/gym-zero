@@ -370,7 +370,7 @@ function MyStrengthCard() {
         const valid = b.weightLb > 0 && b.reps > 0
         return (
           <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <span className="small" style={{ flex: 1, color: 'var(--ink)' }}>
+            <span className="small" style={{ flex: 1, minWidth: 0, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {exercises.get(b.id)?.name ?? b.id}
               {valid && (
                 <span className="lab" style={{ display: 'block' }}>

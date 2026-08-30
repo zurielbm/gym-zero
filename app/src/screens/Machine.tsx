@@ -424,7 +424,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             <span className="lab">Your numbers here</span>
             <span className="lab">{perf.workoutDate.slice(5).replace('-', '.')}</span>
           </div>
-          <div style={{ display: 'flex', gap: 22, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
             {perf.sets.map((s, i) => (
               <span key={i}>
                 <span className="num" style={{ fontSize: '1.3rem', display: 'block' }}>{s.weightLb}×{s.reps}</span>

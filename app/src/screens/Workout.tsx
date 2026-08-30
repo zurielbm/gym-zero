@@ -210,7 +210,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
 
           {currentId && (
             <div className="card">
-              <div className="set-head"><span>Set</span><span style={{ textAlign: 'center' }}>lb</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
+              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>lb</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
               {Array.from({ length: rowCount }, (_, i) => {
                 const done = logged[i]
                 const prevHint = perf?.sets[i]

@@ -95,7 +95,7 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
 }
 
 export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
-  const { api, settings } = useApp()
+  const { api, go, settings } = useApp()
   const today = toDayKey(new Date())
   const [entries, setEntries] = useState<FoodEntry[]>([])
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
@@ -259,7 +259,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                       {e.name}
                       {e.detail && <span className="small" style={{ display: 'block' }}>{e.detail}</span>}
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className="small">
                         {e.calories} kcal · {e.protein}P
                         {e.carbs != null && ` · ${e.carbs}C`}
@@ -294,9 +294,9 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               <p className="section-label">Quick add — saved meals</p>
               <div style={{ marginBottom: 10 }}>
                 {saved.map((m) => (
-                  <span key={m.id} className="chip green btn" onClick={() => addSaved(m)}>
+                  <button key={m.id} type="button" className="chip green btn" onClick={() => void addSaved(m)}>
                     {m.emoji ? `${m.emoji} ` : ''}{m.name}
-                  </span>
+                  </button>
                 ))}
               </div>
             </>
@@ -323,7 +323,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                       { key: 'fat', label: 'Fat' },
                     ] as const).map((f) => (
                       <div key={f.key} style={{ flex: 1, minWidth: 0 }}>
-                        <span className="lab" style={{ display: 'block', fontSize: '0.52rem', marginBottom: 3 }}>{f.label}</span>
+                        <span className="lab" style={{ display: 'block', fontSize: '0.625rem', marginBottom: 3 }}>{f.label}</span>
                         <input className="text-in" style={{ padding: '8px 6px', textAlign: 'center' }} inputMode="numeric"
                           value={item[f.key] ?? ''}
                           onChange={(e) => patchAiItem(i, { [f.key]: parseInt(e.target.value, 10) || 0 })} />
@@ -358,13 +358,26 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                   onChange={(e) => setAiText(e.target.value)}
                 />
               </div>
+              {!ai.available && (
+                <button className="ai-hint" onClick={() => go({ name: 'settings' })}>
+                  {ai.configured
+                    ? '⚡ AI offline — connect to Tailscale, or check the endpoint in Settings ›'
+                    : '⚡ AI is off — set your endpoint in Settings to analyze text & photos ›'}
+                </button>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="ghost-btn" disabled={!ai.available || aiBusy || !aiText.trim()} onClick={() => void analyze()}>
+                <button
+                  className={`ghost-btn${ai.available ? '' : ' soft-disabled'}`}
+                  disabled={aiBusy || (ai.available && !aiText.trim())}
+                  onClick={() => (ai.available ? void analyze() : go({ name: 'settings' }))}
+                >
                   {aiBusy ? 'Analyzing…' : 'Analyze with AI'}
                 </button>
                 <button
-                  className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }} title="Photo of your food"
-                  disabled={!ai.available || aiBusy} onClick={() => photoRef.current?.click()}
+                  className={`ghost-btn${ai.available ? '' : ' soft-disabled'}`}
+                  style={{ width: 'auto', padding: '0 16px' }} title="Photo of your food"
+                  disabled={aiBusy}
+                  onClick={() => (ai.available ? photoRef.current?.click() : go({ name: 'settings' }))}
                 >
                   📷
                 </button>
@@ -378,11 +391,6 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                 />
               </div>
               {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{aiError}</span>}
-              {!ai.available && (
-                <span className="small" style={{ display: 'block', marginTop: 6 }}>
-                  {ai.configured ? 'AI offline — connect to Tailscale.' : 'Set up AI in Settings.'}
-                </span>
-              )}
               <div style={{ height: 14 }} />
               <div className="field">
                 <label>Food</label>

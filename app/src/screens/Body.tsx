@@ -114,13 +114,14 @@ function TrendCard({ stats, weightDirection }: { stats: BodyStatEntry[]; weightD
       <span className="lab">Trend</span>
       <div style={{ marginTop: 8 }}>
         {available.map((m) => (
-          <span
+          <button
             key={m.key}
+            type="button"
             className={`chip btn${m.key === metric ? ' solid' : ''}`}
             onClick={() => setMetric(m.key)}
           >
             {m.label}
-          </span>
+          </button>
         ))}
       </div>
       {shown.length >= 2 && (
@@ -137,13 +138,14 @@ function TrendCard({ stats, weightDirection }: { stats: BodyStatEntry[]; weightD
       <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>{summary}</span>
       <div>
         {TREND_RANGES.map((r) => (
-          <span
+          <button
             key={r.days}
+            type="button"
             className={`chip btn${r.days === days ? ' solid' : ''}`}
             onClick={() => setDays(r.days)}
           >
             {r.chip}
-          </span>
+          </button>
         ))}
       </div>
     </div>

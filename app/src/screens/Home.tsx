@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
-import { BarbellIcon } from '../components/icons'
+import { BarbellIcon, GearIcon } from '../components/icons'
 import { STRENGTH_CHECK_ROUTINE_ID } from '../data/seed'
 import type { DayFoodStats, Routine, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
@@ -54,10 +54,15 @@ export function HomeScreen() {
     <div className="page wide">
       <div className="row">
         <span className="lab">{fmtDay.format(new Date())}</span>
-        <span className={`lab${streakDays > 0 ? ' lm' : ''}`}>
-          {streakDays > 0
-            ? `Week streak ${String(streakDays).padStart(2, '0')}`
-            : 'Ready when you are'}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span className={`lab${streakDays > 0 ? ' lm' : ''}`}>
+            {streakDays > 0
+              ? `Week streak ${String(streakDays).padStart(2, '0')}`
+              : 'Ready when you are'}
+          </span>
+          <button className="icon-btn" title="Settings" onClick={() => go({ name: 'settings' })}>
+            <GearIcon />
+          </button>
         </span>
       </div>
 
