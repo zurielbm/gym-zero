@@ -15,7 +15,7 @@ export interface AiConfig {
   model?: string
 }
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DEFAULT_MODEL = 'gpt-5.6-luna'
 const MEALS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const MUSCLES: MuscleGroup[] = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core', 'hips']
 
@@ -110,7 +110,12 @@ export function useAiAvailable(settings: Settings): AiAvailability {
 
 // ---------- proxy call ----------
 
-async function callProxy(config: AiConfig, system: string, user: string): Promise<unknown> {
+/** OpenAI-compatible multimodal message part; plain strings stay valid for text-only calls. */
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+async function callProxy(config: AiConfig, system: string, user: string | ContentPart[]): Promise<unknown> {
   const body = JSON.stringify({
     model: config.model || DEFAULT_MODEL,
     messages: [
@@ -179,8 +184,7 @@ Reply with ONLY this JSON, no prose:
 {"items":[{"name":"short label, capitalized, include quantity","calories":0,"protein":0,"carbs":0,"fat":0,"meal":"breakfast|lunch|dinner|snack"}]}
 calories in kcal, protein/carbs/fat in grams, all integers. Include "meal" only when the text implies it. At most 12 items.`
 
-export async function parseFood(config: AiConfig, text: string): Promise<AiFoodItem[]> {
-  const raw = await callProxy(config, FOOD_SYSTEM, text.trim()) as { items?: unknown }
+function toFoodItems(raw: { items?: unknown }, emptyMessage: string): AiFoodItem[] {
   const list = Array.isArray(raw.items) ? raw.items : []
   const items: AiFoodItem[] = []
   for (const entry of list.slice(0, 12)) {
@@ -197,8 +201,24 @@ export async function parseFood(config: AiConfig, text: string): Promise<AiFoodI
       meal: MEALS.includes(item.meal as MealSlot) ? item.meal as MealSlot : undefined,
     })
   }
-  if (!items.length) throw new Error("Couldn't read any food from that — try rephrasing.")
+  if (!items.length) throw new Error(emptyMessage)
   return items
+}
+
+export async function parseFood(config: AiConfig, text: string): Promise<AiFoodItem[]> {
+  const raw = await callProxy(config, FOOD_SYSTEM, text.trim()) as { items?: unknown }
+  return toFoodItems(raw, "Couldn't read any food from that — try rephrasing.")
+}
+
+const FOOD_PHOTO_ADDENDUM = `
+The user sends a PHOTO of their food, with an optional text note. Identify what's on the plate and estimate portion sizes from what you can see — plates, cutlery, hands and packaging give scale. Be conservative when unsure.`
+
+export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, note?: string): Promise<AiFoodItem[]> {
+  const raw = await callProxy(config, FOOD_SYSTEM + FOOD_PHOTO_ADDENDUM, [
+    { type: 'image_url', image_url: { url: photoDataUrl } },
+    { type: 'text', text: note?.trim() || 'Log the food in this photo.' },
+  ]) as { items?: unknown }
+  return toFoodItems(raw, "Couldn't spot any food in that photo — try a clearer shot.")
 }
 
 // ---------- machine identification ----------

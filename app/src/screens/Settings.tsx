@@ -185,7 +185,7 @@ function AiCard() {
         <div className="field" style={{ margin: 0 }}>
           <label>Model</label>
           <input
-            className="text-in" placeholder="gemini-2.5-flash" autoCapitalize="off" autoCorrect="off"
+            className="text-in" placeholder="gpt-5.6-luna" autoCapitalize="off" autoCorrect="off"
             value={model} onChange={(e) => { setModel(e.target.value); setState('idle') }}
           />
         </div>

@@ -57,6 +57,19 @@ await step('logged set shows done state and progress', async () => {
   await page.getByText('1/4 sets').waitFor()
 })
 
+await step('delete a logged set (two-tap confirm), then re-log it', async () => {
+  await page.locator('.set-done-btn.done').first().click() // arm
+  await page.locator('.set-done-btn.del-armed').waitFor()
+  await page.locator('.set-done-btn.del-armed').click() // confirm
+  await page.getByText('0/4 sets').waitFor()
+  const rows = page.locator('.set-row')
+  await rows.first().locator('input').nth(0).fill('270')
+  await rows.first().locator('input').nth(1).fill('12')
+  await rows.first().locator('.set-done-btn').click()
+  await page.locator('.rest-toast .ghost-btn').click()
+  await page.getByText('1/4 sets').waitFor()
+})
+
 await step('switch exercise via pill', async () => {
   await page.locator('.exercise-pill', { hasText: 'Leg Extension' }).click()
   await page.locator('h1', { hasText: 'Leg Extension' }).waitFor()
@@ -69,7 +82,7 @@ await step('switch exercise via pill', async () => {
 
 await step('scan screen: manual QR resolve -> known model', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Scan machine').waitFor()
+  await page.getByText('Point at a machine QR or a food barcode').waitFor()
   await page.locator('.text-in').fill('https://youtu.be/4s3rkgBX5So')
   await page.getByText('Go', { exact: true }).click()
   // youtu.be form must normalize to the catalog watch?v= form
@@ -145,6 +158,22 @@ await step('back home -> streak + last workout card', async () => {
   await page.getByText('workout', { exact: false }).first().waitFor()
 })
 
+await step('routine builder: create, save, start, discard', async () => {
+  await page.locator('.tab', { hasText: 'Train' }).click()
+  await page.getByText('Choose routine').waitFor()
+  await page.getByText('＋ New routine').click()
+  await page.getByText('Pick the machines').waitFor()
+  await page.locator('input[placeholder="Push day"]').fill('Quick Push')
+  await page.locator('select.text-in').selectOption({ label: 'Chest Press' })
+  await page.getByText('Add', { exact: true }).click()
+  await page.getByText('1 exercise · 3 sets').waitFor()
+  await page.locator('.big-btn', { hasText: 'Save routine' }).click()
+  await page.locator('.card.tappable', { hasText: 'Quick Push' }).click()
+  await page.locator('h1', { hasText: 'Chest Press' }).waitFor()
+  await page.locator('.ghost-btn.danger', { hasText: 'Discard workout' }).click() // confirm auto-accepted
+  await page.getByText('Choose routine').waitFor()
+})
+
 await step('food: saved meal chip adds entry + stats update', async () => {
   await page.locator('.tab', { hasText: 'Fuel' }).click()
   await page.getByText('Quick add — saved meals').waitFor()
@@ -152,13 +181,43 @@ await step('food: saved meal chip adds entry + stats update', async () => {
   await page.getByText('340 kcal · 48P').waitFor()
 })
 
-await step('food: quick add custom entry', async () => {
+await step('food: quick add custom entry with all four macros', async () => {
   await page.getByText('＋ Quick add').click()
   await page.locator('input.text-in').first().fill('Chicken bowl')
   await page.locator('input[inputmode="numeric"]').nth(0).fill('650')
   await page.locator('input[inputmode="numeric"]').nth(1).fill('45')
+  await page.locator('input[inputmode="numeric"]').nth(2).fill('55')
+  await page.locator('input[inputmode="numeric"]').nth(3).fill('20')
   await page.locator('.big-btn', { hasText: 'Add' }).click()
-  await page.getByText('650 kcal · 45P').waitFor()
+  await page.getByText('650 kcal · 45P · 55C · 20F').waitFor()
+})
+
+// Open Food Facts mocked at the network layer, like the AI proxy below
+await page.route('https://world.openfoodfacts.org/**', (route) => route.fulfill({
+  status: 200, contentType: 'application/json',
+  body: JSON.stringify({
+    status: 1,
+    product: {
+      product_name: 'Protein Bar', brands: 'Barbebest',
+      nutriments: { 'energy-kcal_100g': 400, proteins_100g: 30, carbohydrates_100g: 40, fat_100g: 15 },
+      serving_quantity: 50, serving_size: '1 bar (50 g)',
+    },
+  }),
+}))
+
+await step('barcode: manual digits -> OFF lookup -> portion card logs entry', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.getByText('Point at a machine QR or a food barcode').waitFor()
+  await page.locator('.text-in').fill('0123456789012')
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Protein Bar — Barbebest').waitFor()
+  await page.getByText('400 kcal per 100 g').waitFor()
+  await page.locator('.qr-found').click()
+  await page.getByText('Scanned — how much did you have?').waitFor()
+  await page.getByText('Servings · 1 = 1 bar (50 g)').waitFor()
+  await page.getByText('≈ 200 kcal · 15g protein · 20g carbs · 8g fat').waitFor()
+  await page.locator('.big-btn', { hasText: 'Log it' }).click()
+  await page.getByText('200 kcal · 15P · 20C · 8F').waitFor()
 })
 
 await step('history: workout listed with volume + week strip', async () => {
@@ -217,6 +276,8 @@ await step('persistence: reload keeps food + history (IndexedDB)', async () => {
 
 await step('data: export + reimport round-trip', async () => {
   await page.locator('.tab', { hasText: 'Stats' }).click()
+  await page.locator('.page .icon-btn[title="Settings"]').click() // moved to Settings screen
+  await page.getByText('Export data').waitFor()
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByText('Export data').click(),
@@ -255,8 +316,9 @@ await page.route('https://ai.e2e/**', async (route) => {
   return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }] }) })
 })
 
-await step('ai: configure proxy in Stats (mocked)', async () => {
+await step('ai: configure proxy in Settings (mocked)', async () => {
   await page.locator('.tab', { hasText: 'Stats' }).click()
+  await page.locator('.page .icon-btn[title="Settings"]').click()
   await page.locator('input[placeholder="https://optiplex.tailnet.ts.net"]').fill('https://ai.e2e')
   await page.getByText('Test & save').click()
   await page.getByText('Connected ✓').waitFor()
@@ -270,13 +332,21 @@ await step('ai: describe-it parses food into entries (mocked)', async () => {
   await page.getByText('AI estimate — review').waitFor()
   await page.getByText('370 kcal').waitFor()
   await page.locator('.big-btn', { hasText: 'Add 2 items' }).click()
-  await page.getByText('180 kcal · 12P').waitFor()
-  await page.getByText('190 kcal · 4P').waitFor()
+  await page.getByText('180 kcal · 12P').first().waitFor()
+  await page.getByText('190 kcal · 4P').first().waitFor()
+})
+
+await step('ai: photo goes through the same review flow (mocked)', async () => {
+  await page.getByText('＋ Quick add').click()
+  await page.setInputFiles('input[accept="image/*"]', 'e2e/final-home.png')
+  await page.getByText('AI estimate — review').waitFor()
+  await page.locator('.big-btn', { hasText: 'Add 2 items' }).click()
+  await page.getByText('180 kcal · 12P').first().waitFor()
 })
 
 await step('ai: new machine -> quick setup -> starter program (mocked)', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Scan machine').waitFor()
+  await page.getByText('Point at a machine QR or a food barcode').waitFor()
   await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=chpx')
   await page.getByText('Go').click()
   await page.getByText('Unknown QR code').waitFor() // machine setup screen mounted

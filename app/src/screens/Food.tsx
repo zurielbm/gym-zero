@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
-import { aiConfig, parseFood, useAiAvailable, type AiFoodItem } from '../lib/ai'
+import { aiConfig, parseFood, parseFoodPhoto, useAiAvailable, type AiFoodItem } from '../lib/ai'
+import { downscalePhoto } from '../lib/image'
 import type { DayFoodStats, FoodEntry, FoodProduct, MealSlot, SavedMeal } from '../types'
 import { toDayKey } from '../types'
 
@@ -108,6 +109,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
   const [aiItems, setAiItems] = useState<AiFoodItem[] | null>(null)
   const [aiMeal, setAiMeal] = useState<MealSlot>(currentSlot())
   const [scanned, setScanned] = useState<FoodProduct | undefined>(prefill)
+  const photoRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
     setEntries(await api.listFood(today))
@@ -155,6 +157,23 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     setAiError(null)
     try {
       const items = await parseFood(config, aiText)
+      setAiItems(items)
+      setAiMeal(items.find((item) => item.meal)?.meal ?? currentSlot())
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  const analyzePhoto = async (file: File) => {
+    const config = aiConfig(settings)
+    if (!config || aiBusy) return
+    setAiBusy(true)
+    setAiError(null)
+    try {
+      // any text already typed rides along as a note ("the bowl on the left is mine")
+      const items = await parseFoodPhoto(config, await downscalePhoto(file), aiText)
       setAiItems(items)
       setAiMeal(items.find((item) => item.meal)?.meal ?? currentSlot())
     } catch (err) {
@@ -330,7 +349,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
             <div className="card">
               <div className="field">
                 <label style={ai.available ? { color: 'var(--lime)' } : undefined}>
-                  ✦ Describe it{ai.available ? '' : ' — offline'}
+                  ✦ Describe it or snap it{ai.available ? '' : ' — offline'}
                 </label>
                 <textarea
                   className="text-in" rows={2} style={{ resize: 'none', ...(ai.available ? {} : { opacity: 0.55 }) }}
@@ -339,9 +358,25 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                   onChange={(e) => setAiText(e.target.value)}
                 />
               </div>
-              <button className="ghost-btn" disabled={!ai.available || aiBusy || !aiText.trim()} onClick={() => void analyze()}>
-                {aiBusy ? 'Analyzing…' : 'Analyze with AI'}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="ghost-btn" disabled={!ai.available || aiBusy || !aiText.trim()} onClick={() => void analyze()}>
+                  {aiBusy ? 'Analyzing…' : 'Analyze with AI'}
+                </button>
+                <button
+                  className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }} title="Photo of your food"
+                  disabled={!ai.available || aiBusy} onClick={() => photoRef.current?.click()}
+                >
+                  📷
+                </button>
+                <input
+                  ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) void analyzePhoto(file)
+                  }}
+                />
+              </div>
               {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{aiError}</span>}
               {!ai.available && (
                 <span className="small" style={{ display: 'block', marginTop: 6 }}>
