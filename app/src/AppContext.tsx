@@ -4,6 +4,7 @@ import type { DataAPI, Exercise, Settings, Workout } from './types'
 export type Screen =
   | { name: 'home' }
   | { name: 'routines' }
+  | { name: 'routine-edit'; routineId?: string }
   | { name: 'workout'; exerciseId?: string }
   | { name: 'scan' }
   | { name: 'machine'; machineId?: string; modelId?: string; qrUrl?: string }

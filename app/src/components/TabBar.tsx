@@ -2,7 +2,7 @@ import { useApp } from '../AppContext'
 import type { Screen } from '../AppContext'
 import { BarbellIcon, ChartIcon, FoodIcon, GearIcon, HomeIcon, ScanIcon } from './icons'
 
-const workoutScreens = new Set(['routines', 'workout', 'machine', 'summary'])
+const workoutScreens = new Set(['routines', 'routine-edit', 'workout', 'machine', 'summary'])
 
 const tabs: Array<{ key: string; label: string; icon: () => React.ReactElement; to: Screen }> = [
   { key: 'home', label: 'Home', icon: HomeIcon, to: { name: 'home' } },

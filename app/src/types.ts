@@ -280,6 +280,7 @@ export interface DataAPI {
   // routines
   listRoutines(): Promise<Routine[]>
   saveRoutine(r: Routine): Promise<void>
+  deleteRoutine(id: string): Promise<void>
 
   // workouts
   getActiveWorkout(): Promise<Workout | undefined>

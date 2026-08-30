@@ -7,6 +7,7 @@ import { SYNC_APPLIED_EVENT } from './data/sync'
 import { TabBar, TopNav } from './components/TabBar'
 import { HomeScreen } from './screens/Home'
 import { RoutinesScreen } from './screens/Routines'
+import { RoutineEditScreen } from './screens/RoutineEdit'
 import { WorkoutScreen } from './screens/Workout'
 import { ScanScreen } from './screens/Scan'
 import { MachineScreen } from './screens/Machine'
@@ -99,6 +100,7 @@ export default function App() {
         <div className="screen" key={JSON.stringify(screen)}>
           {screen.name === 'home' && <HomeScreen />}
           {screen.name === 'routines' && <RoutinesScreen />}
+          {screen.name === 'routine-edit' && <RoutineEditScreen routineId={screen.routineId} />}
           {screen.name === 'workout' && <WorkoutScreen initialExerciseId={screen.exerciseId} />}
           {screen.name === 'scan' && <ScanScreen />}
           {screen.name === 'machine' && (

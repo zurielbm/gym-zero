@@ -44,7 +44,15 @@ export function RoutinesScreen() {
         <div key={r.id} className="card tappable" onClick={() => start(r)}>
           <div className="row">
             <b style={{ fontSize: '1rem' }}>{r.emoji ? `${r.emoji} ` : ''}{r.name}</b>
-            {r.id === upNextId && <span className="chip solid" style={{ margin: 0 }}>Up next</span>}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {r.id === upNextId && <span className="chip solid" style={{ margin: 0 }}>Up next</span>}
+              <button
+                className="icon-btn" title="Edit routine" style={{ fontSize: '0.9rem' }}
+                onClick={(e) => { e.stopPropagation(); go({ name: 'routine-edit', routineId: r.id }) }}
+              >
+                ✎
+              </button>
+            </span>
           </div>
           <span className="small" style={{ display: 'block', margin: '4px 0 6px' }}>
             {r.items.map((i) => exercises.get(i.exerciseId)?.name ?? i.exerciseId).join(' · ')}
@@ -56,9 +64,12 @@ export function RoutinesScreen() {
         </div>
       ))}
 
+      <button className="ghost-btn" style={{ marginTop: 10 }} onClick={() => go({ name: 'routine-edit' })}>
+        ＋ New routine
+      </button>
       <button
         className="ghost-btn"
-        style={{ marginTop: 10 }}
+        style={{ marginTop: 8 }}
         onClick={async () => {
           // freestyle session without a routine
           const w = await api.startWorkout()

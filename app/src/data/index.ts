@@ -39,6 +39,7 @@ export const api: DataAPI = {
   async saveAiProgram(program) { await ready(); await db.aiPrograms.put(program) },
   async listRoutines() { await ready(); return db.routines.toArray() },
   async saveRoutine(routine) { await ready(); await db.routines.put(routine) },
+  async deleteRoutine(id) { await ready(); await db.routines.delete(id) },
   async getActiveWorkout() { await ready(); return db.workouts.filter((workout) => !workout.finishedAt).first() },
   async startWorkout(routineId) { await ready(); const workout: Workout = { id: uid(), date: toDayKey(new Date()), routineId, startedAt: Date.now() }; await db.transaction('rw', db.workouts, db.routines, async () => { await db.workouts.add(workout); if (routineId) await db.routines.update(routineId, { lastUsedAt: workout.startedAt }) }); return workout },
   async cancelWorkout(workoutId) { await ready(); await db.transaction('rw', db.workouts, db.sets, async () => { await db.workouts.delete(workoutId); await db.sets.where('workoutId').equals(workoutId).delete() }) },
