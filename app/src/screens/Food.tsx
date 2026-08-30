@@ -189,6 +189,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
   const [aiResult, setAiResult] = useState<AiFoodResult | null>(null)
   const [aiReq, setAiReq] = useState<AiFoodRequest | null>(null)
   const [aiAnswer, setAiAnswer] = useState('')
+  const [showFeedback, setShowFeedback] = useState(false)
   const [aiMeal, setAiMeal] = useState<MealSlot>(currentSlot())
   const [scanned, setScanned] = useState<FoodProduct | undefined>(prefill)
   const photoRef = useRef<HTMLInputElement>(null)
@@ -257,6 +258,8 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
       const result = await parseFood(config, aiText)
       setAiResult(result)
       setAiReq({ kind: 'text', text: aiText })
+      setAiAnswer('')
+      setShowFeedback(false)
       setAiMeal(result.items.find((item) => item.meal)?.meal ?? currentSlot())
     } catch (err) {
       setAiError(err instanceof Error ? err.message : String(err))
@@ -276,6 +279,8 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
       const result = await parseFoodPhoto(config, photoDataUrl, aiText)
       setAiResult(result)
       setAiReq({ kind: 'photo', photoDataUrl, note: aiText })
+      setAiAnswer('')
+      setShowFeedback(false)
       setAiMeal(result.items.find((item) => item.meal)?.meal ?? currentSlot())
     } catch (err) {
       setAiError(err instanceof Error ? err.message : String(err))
@@ -297,6 +302,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
         : await parseFood(config, aiReq.text, followup)
       setAiResult(result)
       setAiAnswer('')
+      setShowFeedback(false)
       setAiMeal((meal) => result.items.find((item) => item.meal)?.meal ?? meal)
     } catch (err) {
       setAiError(err instanceof Error ? err.message : String(err))
@@ -332,6 +338,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     setAiResult(null)
     setAiReq(null)
     setAiAnswer('')
+    setShowFeedback(false)
   }
 
   const addAllAi = async () => {
@@ -540,6 +547,31 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               ))}
               {aiResult.items.length > 0 && (
                 <span className="small" style={{ display: 'block', marginTop: 6 }}>Grams for protein, carbs and fat — estimates, tweak anything.</span>
+              )}
+              {!aiResult.question && aiResult.items.length > 0 && (
+                showFeedback ? (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input className="text-in" style={{ flex: 1, minWidth: 0 }}
+                        placeholder="e.g. I ate 3 of these · it was a large bowl" autoFocus
+                        value={aiAnswer} disabled={aiBusy}
+                        onChange={(e) => setAiAnswer(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void answerQuestion(aiAnswer) }} />
+                      <button className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }}
+                        disabled={aiBusy || !aiAnswer.trim()} onClick={() => void answerQuestion(aiAnswer)}>
+                        {aiBusy ? '…' : '↩'}
+                      </button>
+                    </div>
+                    <span className="small" style={{ display: 'block', marginTop: 6 }}>
+                      It re-checks {aiReq?.kind === 'photo' ? 'the photo' : 'your description'} with your note and fixes the numbers.
+                    </span>
+                  </div>
+                ) : (
+                  <button className="ghost-btn" style={{ width: 'auto', padding: '8px 14px', marginTop: 10 }}
+                    disabled={aiBusy} onClick={() => setShowFeedback(true)}>
+                    ✎ Did it get something wrong? Tell it
+                  </button>
+                )
               )}
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Meal</label>

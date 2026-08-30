@@ -34,7 +34,9 @@ await page.route('https://ai.e2e/**', async (route) => {
     return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ data: [] }) })
   }
   const post = route.request().postData() ?? ''
-  const content = post.includes('Answer to your question')
+  const content = post.includes('ate 3')
+    ? JSON.stringify({ items: [{ name: 'Ham sandwiches (3)', calories: 1290, protein: 75, carbs: 90, fat: 66 }] })
+    : post.includes('User feedback / answer')
     ? JSON.stringify({ items: [{ name: 'Ham sandwich', calories: 430, protein: 25, carbs: 30, fat: 22 }] })
     : JSON.stringify({
         items: [
@@ -112,8 +114,15 @@ await step('ai: answering the question revises the items', async () => {
   await page.getByText('Is this one sandwich or separate items?').waitFor()
   await page.getByRole('button', { name: 'One sandwich', exact: true }).click()
   await page.getByText('430 kcal').waitFor()
+})
+
+await step('ai: feedback button re-checks with the user note', async () => {
+  await page.getByText('✎ Did it get something wrong? Tell it').click()
+  await page.getByPlaceholder('e.g. I ate 3 of these · it was a large bowl').fill('I ate 3 of these')
+  await page.getByRole('button', { name: '↩', exact: true }).click()
+  await page.getByText('1290 kcal').waitFor()
   await page.locator('.big-btn', { hasText: 'Add 1 item' }).click()
-  await page.getByText('430 kcal · 25P').first().waitFor()
+  await page.getByText('1290 kcal · 75P').first().waitFor()
 })
 
 await step('shake container: one tap writes fluid + calories', async () => {

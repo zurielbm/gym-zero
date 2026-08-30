@@ -245,7 +245,7 @@ function toFoodResult(raw: unknown, emptyMessage: string): AiFoodResult {
   return { items, question, raw: JSON.stringify(parsed) }
 }
 
-/** The user's answer to a previous question, replayed as a follow-up turn. */
+/** The user's answer to a question, or unprompted feedback ("I actually ate 3 of these"). */
 export interface AiFoodAnswer {
   priorRaw: string
   answer: string
@@ -254,7 +254,7 @@ export interface AiFoodAnswer {
 const answerTurns = (followup?: AiFoodAnswer): Array<{ role: 'assistant' | 'user'; content: string }> =>
   followup ? [
     { role: 'assistant', content: followup.priorRaw },
-    { role: 'user', content: `Answer to your question: ${followup.answer}\nUpdate the items accordingly and reply with the same JSON shape (ask again only if something new truly matters).` },
+    { role: 'user', content: `User feedback / answer: ${followup.answer}\nRevise the items accordingly — trust what the user says over your own estimate — and reply with the same JSON shape (ask again only if something new truly matters).` },
   ] : []
 
 export async function parseFood(config: AiConfig, text: string, followup?: AiFoodAnswer): Promise<AiFoodResult> {
