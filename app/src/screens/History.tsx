@@ -1,25 +1,70 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { GearIcon } from '../components/icons'
-import type { BodyStatEntry, WeekActivity, WorkoutSummary } from '../types'
+import { SYNC_APPLIED_EVENT } from '../data/sync'
+import { waterTargetOz } from '../lib/hydration'
+import type { BodyStatEntry, WeekActivity, WeekFoodStats, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
 const dayLetter = (dateKey: string) =>
   ['S', 'M', 'T', 'W', 'T', 'F', 'S'][new Date(`${dateKey}T12:00:00`).getDay()]
 
+/** 7 day-bars against an optional dashed target line; unlogged days render as gaps. */
+function WeekBars({ days, metric, target, targetLabel, barClass, gapUnlogged, height }: {
+  days: WeekFoodStats['days']
+  metric: (day: WeekFoodStats['days'][number]) => number
+  target?: number
+  targetLabel?: string
+  barClass?: string
+  gapUnlogged?: boolean
+  height?: number
+}) {
+  const scaleMax = Math.max(target ?? 0, ...days.map(metric), 1)
+  return (
+    <>
+      <div className="spark" style={height ? { height } : undefined}>
+        {target !== undefined && (
+          <div className="target-line" style={{ bottom: `${Math.min(100, (target / scaleMax) * 100)}%` }}>
+            <span>{targetLabel}</span>
+          </div>
+        )}
+        {days.map((day, i) => {
+          const isToday = i === days.length - 1
+          if (gapUnlogged && !day.logged) return <i key={day.date} className="gap" />
+          const cls = [barClass, isToday ? 'hi' : ''].filter(Boolean).join(' ')
+          return <i key={day.date} className={cls} style={{ height: `${Math.max(5, (metric(day) / scaleMax) * 100)}%` }} />
+        })}
+      </div>
+      <div className="spark-days">
+        {days.map((day, i) => (
+          <b key={day.date} className={i === days.length - 1 ? 'today' : ''}>{dayLetter(day.date)}</b>
+        ))}
+      </div>
+    </>
+  )
+}
+
 export function HistoryScreen() {
   const { api, settings, refreshSettings, exercises, go } = useApp()
   const [week, setWeek] = useState<WeekActivity | null>(null)
+  const [foodWeek, setFoodWeek] = useState<WeekFoodStats | null>(null)
   const [recent, setRecent] = useState<WorkoutSummary[]>([])
   const [latestStat, setLatestStat] = useState<BodyStatEntry | undefined>(undefined)
   const [weightTrend, setWeightTrend] = useState<Array<{ at: number; value: number }>>([])
   const [weightIn, setWeightIn] = useState('')
 
   useEffect(() => {
-    api.getWeekActivity().then(setWeek)
-    api.listRecentWorkouts(10).then(setRecent)
-    api.getLatestBodyStat().then(setLatestStat)
-    api.getBodyTrend('weightLb', 30).then(setWeightTrend)
+    const load = () => {
+      api.getWeekActivity().then(setWeek)
+      api.getWeekFoodStats().then(setFoodWeek)
+      api.listRecentWorkouts(10).then(setRecent)
+      api.getLatestBodyStat().then(setLatestStat)
+      api.getBodyTrend('weightLb', 30).then(setWeightTrend)
+    }
+    load()
+    // pulled sync records land in Dexie behind React's back; re-read on apply
+    window.addEventListener(SYNC_APPLIED_EVENT, load)
+    return () => window.removeEventListener(SYNC_APPLIED_EVENT, load)
   }, [api])
 
   const saveWeight = async () => {
@@ -44,6 +89,30 @@ export function HistoryScreen() {
     return Math.round(((cur - prev) / prev) * 100)
   })()
 
+  const loggedDays = foodWeek?.days.filter((d) => d.logged).length ?? 0
+  const anyFood = loggedDays > 0 || (foodWeek?.weeklyAvgCalories.some((v) => v > 0) ?? false)
+  const waterOzTarget = waterTargetOz(settings, 0)
+  const proteinHits = foodWeek?.days.filter((d) => d.logged && d.protein >= settings.proteinTarget).length ?? 0
+  const waterHits = foodWeek?.days.filter((d) => d.waterOz >= waterOzTarget).length ?? 0
+  const weekPct = (cur: number, prev: number) => (prev > 0 && cur > 0 ? Math.round(((cur - prev) / prev) * 100) : null)
+  const calPct = weekPct(foodWeek?.avg.calories ?? 0, foodWeek?.prevAvg.calories ?? 0)
+  const proteinPct = weekPct(foodWeek?.avg.protein ?? 0, foodWeek?.prevAvg.protein ?? 0)
+  // "good" = this week's average landed closer to the calorie target than last week's
+  const calImproved = foodWeek !== null &&
+    Math.abs(foodWeek.avg.calories - settings.calorieTarget) <= Math.abs(foodWeek.prevAvg.calories - settings.calorieTarget)
+
+  const calorieSummary = (fw: WeekFoodStats) => {
+    const target = settings.calorieTarget
+    const diff = fw.avg.calories - target
+    const off = Math.abs(diff) / target
+    const dayWord = loggedDays === 7 ? 'all 7 days' : `the ${loggedDays} day${loggedDays === 1 ? '' : 's'} you logged`
+    const verdict = off <= 0.05
+      ? `right around your ${target.toLocaleString()} target`
+      : `${off <= 0.15 ? 'a little' : 'well'} ${diff < 0 ? 'under' : 'over'} your ${target.toLocaleString()} target`
+    const gapNote = loggedDays < 7 ? ' Days with no logs show as gaps and don’t count toward the average.' : ''
+    return `You averaged ${fw.avg.calories.toLocaleString()} kcal on ${dayWord} — ${verdict}.${gapNote}`
+  }
+
   return (
     <div className="page wide">
       <div className="row">
@@ -56,6 +125,104 @@ export function HistoryScreen() {
 
       <div className="hi-grid">
         <div>
+          <p className="section-label">Fuel · last 7 days</p>
+          {foodWeek && !anyFood && (
+            <div className="card">
+              <span className="lab">No food logged yet</span>
+              <span className="small" style={{ display: 'block', margin: '4px 0 10px' }}>
+                Log a meal on the Fuel tab and your week shows up here.
+              </span>
+              <button className="ghost-btn" style={{ width: 'auto', padding: '12px 16px' }} onClick={() => go({ name: 'food' })}>
+                Log food ›
+              </button>
+            </div>
+          )}
+          {foodWeek && anyFood && (
+            <>
+              <div className="card">
+                <div className="row">
+                  <span className="lab">Calories · avg on logged days</span>
+                  {calPct !== null && (
+                    <span className={`chip ${calImproved ? 'green' : ''}`} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                      {calPct >= 0 ? '▲' : '▼'} {Math.abs(calPct)}% vs prior wk
+                    </span>
+                  )}
+                </div>
+                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 2 }}>
+                  {foodWeek.avg.calories.toLocaleString()}
+                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.calorieTarget.toLocaleString()} kcal</span>
+                </span>
+                <WeekBars days={foodWeek.days} metric={(d) => d.calories} gapUnlogged
+                  target={settings.calorieTarget} targetLabel={`target ${settings.calorieTarget.toLocaleString()}`} />
+                {loggedDays > 0 && <span className="small" style={{ display: 'block', marginTop: 10 }}>{calorieSummary(foodWeek)}</span>}
+              </div>
+
+              <div className="card">
+                <div className="row">
+                  <span className="lab">Protein · avg on logged days</span>
+                  {proteinPct !== null && (
+                    <span className={`chip ${proteinPct >= 0 ? 'green' : ''}`} style={{ margin: 0 }}>
+                      {proteinPct >= 0 ? '▲' : '▼'} {Math.abs(proteinPct)}%
+                    </span>
+                  )}
+                </div>
+                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 2 }}>
+                  {foodWeek.avg.protein.toLocaleString()}
+                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.proteinTarget.toLocaleString()} g</span>
+                </span>
+                <WeekBars days={foodWeek.days} metric={(d) => d.protein} gapUnlogged barClass="ink" height={40}
+                  target={settings.proteinTarget} targetLabel={`${settings.proteinTarget} g`} />
+                {loggedDays > 0 && (foodWeek.avg.carbs > 0 || foodWeek.avg.fat > 0) && (
+                  <span className="small" style={{ display: 'block', marginTop: 10 }}>
+                    Also averaged {foodWeek.avg.carbs} g carbs · {foodWeek.avg.fat} g fat — context, no targets set.
+                  </span>
+                )}
+              </div>
+
+              <div className="card">
+                <div className="row">
+                  <span className="lab">Water</span>
+                  <span className="num" style={{ fontSize: '1.1rem' }}>
+                    {foodWeek.avgWaterOz}
+                    <span className="small" style={{ fontFamily: 'var(--body)' }}> / about {waterOzTarget} oz avg</span>
+                  </span>
+                </div>
+                <WeekBars days={foodWeek.days} metric={(d) => d.waterOz} barClass="wat" height={32} />
+                <div className="stat-strip" style={{ marginBottom: 0 }}>
+                  <span>
+                    <span className="num">{loggedDays}/7</span>
+                    <span className="lab">Days logged</span>
+                  </span>
+                  <span>
+                    <span className="num">{proteinHits}/7</span>
+                    <span className="lab">Hit protein</span>
+                  </span>
+                  <span>
+                    <span className="num">{waterHits}/7</span>
+                    <span className="lab">Hit water</span>
+                  </span>
+                </div>
+              </div>
+
+              {foodWeek.weeklyAvgCalories.filter((v) => v > 0).length >= 2 && (
+                <div className="card">
+                  <span className="lab">Calorie trend · 4 wk</span>
+                  <div className="spark" style={{ height: 40 }}>
+                    {foodWeek.weeklyAvgCalories.map((v, i) => (
+                      <i
+                        key={i}
+                        className={i === foodWeek.weeklyAvgCalories.length - 1 ? 'hi' : ''}
+                        style={{ height: `${Math.max(5, (v / Math.max(1, ...foodWeek.weeklyAvgCalories)) * 100)}%` }}
+                      />
+                    ))}
+                  </div>
+                  <span className="lab" style={{ display: 'block', marginTop: 6 }}>Avg kcal on logged days, per week</span>
+                </div>
+              )}
+            </>
+          )}
+
+          <p className="section-label">Training</p>
           {week && (
             <div className="cal-strip">
               {week.days.map((d) => (

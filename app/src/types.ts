@@ -323,6 +323,23 @@ export interface WeekActivity {
   weeklyVolumeLb: number[]
 }
 
+/**
+ * Rolling 7-day food picture. A day with no food entries has logged=false and
+ * is excluded from every average — a forgotten day shouldn't drag the week down.
+ */
+export interface WeekFoodStats {
+  /** last 7 days, oldest first */
+  days: Array<{ date: DayKey; calories: number; protein: number; carbs: number; fat: number; waterOz: number; logged: boolean }>
+  /** per-day averages over logged days only; all zeros when nothing was logged */
+  avg: DayFoodStats
+  /** avg oz per day over days with any drink logged */
+  avgWaterOz: number
+  /** same averages for the 7 days before that — feeds the week-over-week chips */
+  prevAvg: { calories: number; protein: number }
+  /** avg kcal per logged day for each of the last 4 rolling weeks, oldest first */
+  weeklyAvgCalories: number[]
+}
+
 /** Result of resolving a scanned QR url. */
 export interface QrResolution {
   /** the user's machine record if this exact URL was mapped before */
@@ -376,6 +393,7 @@ export interface DataAPI {
   /** most recent food entries, one per distinct name, newest first */
   listRecentFood(limit: number): Promise<FoodEntry[]>
   getDayFoodStats(date: DayKey): Promise<DayFoodStats>
+  getWeekFoodStats(): Promise<WeekFoodStats>
   listSavedMeals(): Promise<SavedMeal[]>
   saveSavedMeal(m: Omit<SavedMeal, 'id'> & { id?: string }): Promise<SavedMeal>
   // barcode product cache (device-local, not synced — it's public data)

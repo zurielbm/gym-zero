@@ -1,4 +1,4 @@
-import type { BodyStatEntry, Container, DataAPI, DayDrinkStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, Workout, WorkoutSet, WorkoutSummary } from '../types'
+import type { BodyStatEntry, Container, DataAPI, DayDrinkStats, DayFoodStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, WeekFoodStats, Workout, WorkoutSet, WorkoutSummary } from '../types'
 import { epleyMaxLb, toDayKey } from '../types'
 import { db, type EquipmentModelRecord, type MachineRecord } from './db'
 import { normalizeQrUrl } from './qr'
@@ -112,6 +112,53 @@ export const api: DataAPI = {
     return recent
   },
   async getDayFoodStats(date) { await ready(); const food = await db.food.where('date').equals(date).toArray(); return { calories: food.reduce((total, entry) => total + entry.calories, 0), protein: food.reduce((total, entry) => total + entry.protein, 0), carbs: food.reduce((total, entry) => total + (entry.carbs ?? 0), 0), fat: food.reduce((total, entry) => total + (entry.fat ?? 0), 0) } },
+  async getWeekFoodStats() {
+    await ready()
+    const dayKeyAgo = (offset: number) => { const day = new Date(); day.setDate(day.getDate() - offset); return toDayKey(day) }
+    // 28 days of food (the 4-week trend), 7 days of drinks; date keys sort lexicographically
+    const [food, drinks] = await Promise.all([
+      db.food.where('date').between(dayKeyAgo(27), dayKeyAgo(0), true, true).toArray(),
+      db.drinks.where('date').between(dayKeyAgo(6), dayKeyAgo(0), true, true).toArray(),
+    ])
+    const foodByDate = new Map<string, DayFoodStats>()
+    for (const entry of food) {
+      const stats = foodByDate.get(entry.date) ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      stats.calories += entry.calories
+      stats.protein += entry.protein
+      stats.carbs += entry.carbs ?? 0
+      stats.fat += entry.fat ?? 0
+      foodByDate.set(entry.date, stats)
+    }
+    const waterByDate = new Map<string, number>()
+    for (const drink of drinks) waterByDate.set(drink.date, (waterByDate.get(drink.date) ?? 0) + drink.volumeOz)
+    // averages count logged days only, so a forgotten day can't drag the week down
+    const windowAvg = (fromOffset: number, toOffset: number) => {
+      const sum = { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      let loggedDays = 0
+      for (let offset = fromOffset; offset >= toOffset; offset -= 1) {
+        const stats = foodByDate.get(dayKeyAgo(offset))
+        if (!stats) continue
+        loggedDays += 1
+        sum.calories += stats.calories
+        sum.protein += stats.protein
+        sum.carbs += stats.carbs
+        sum.fat += stats.fat
+      }
+      const per = (total: number) => (loggedDays ? Math.round(total / loggedDays) : 0)
+      return { calories: per(sum.calories), protein: per(sum.protein), carbs: per(sum.carbs), fat: per(sum.fat) }
+    }
+    const days: WeekFoodStats['days'] = []
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const date = dayKeyAgo(offset)
+      const stats = foodByDate.get(date)
+      days.push({ date, calories: stats?.calories ?? 0, protein: stats?.protein ?? 0, carbs: stats?.carbs ?? 0, fat: stats?.fat ?? 0, waterOz: Math.round(waterByDate.get(date) ?? 0), logged: Boolean(stats) })
+    }
+    const drinkDays = days.filter((day) => day.waterOz > 0)
+    const avgWaterOz = drinkDays.length ? Math.round(drinkDays.reduce((total, day) => total + day.waterOz, 0) / drinkDays.length) : 0
+    const prev = windowAvg(13, 7)
+    const weeklyAvgCalories = [windowAvg(27, 21), windowAvg(20, 14), prev, windowAvg(6, 0)].map((week) => week.calories)
+    return { days, avg: windowAvg(6, 0), avgWaterOz, prevAvg: { calories: prev.calories, protein: prev.protein }, weeklyAvgCalories }
+  },
   async listSavedMeals() { await ready(); return db.savedMeals.toArray() },
   async saveSavedMeal(meal) { await ready(); const full: SavedMeal = { ...meal, id: meal.id ?? uid() }; await db.savedMeals.put(full); return full },
   async getCachedProduct(barcode) { await ready(); return db.products.get(barcode) },
