@@ -59,7 +59,10 @@ export function RoutinesScreen() {
           </span>
           <div className="row">
             <span className="lab">{r.items.length} exercises</span>
-            <span className="lab">Last · {relativeDay(r.lastUsedAt)}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="lab">Last · {relativeDay(r.lastUsedAt)}</span>
+              <span className="chev">›</span>
+            </span>
           </div>
         </div>
       ))}

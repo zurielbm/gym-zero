@@ -128,7 +128,10 @@ export function HomeScreen() {
             <div className="card tappable" style={{ marginTop: 14 }} onClick={() => go({ name: 'history' })}>
               <div className="row">
                 <span className="lab">Last workout</span>
-                <span className="lab">{last.workout.date.slice(5).replace('-', '.')}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="lab">{last.workout.date.slice(5).replace('-', '.')}</span>
+                  <span className="chev">›</span>
+                </span>
               </div>
               <div className="stat-strip" style={{ border: 0, paddingTop: 8, margin: '0 0 4px' }}>
                 <span><span className="num" style={{ fontSize: '1.35rem' }}>{last.setCount}</span><span className="lab">Sets</span></span>
@@ -150,7 +153,10 @@ export function HomeScreen() {
           <div className="card tappable" style={{ marginTop: last ? 4 : 14 }} onClick={() => go({ name: 'food' })}>
             <div className="row">
               <b style={{ fontSize: '0.9rem' }}>Log food</b>
-              <span style={{ color: 'var(--lime)', fontWeight: 800 }}>＋</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--lime)', fontWeight: 800 }}>＋</span>
+                <span className="chev">›</span>
+              </span>
             </div>
             <span className="small">Calories and macros in a couple of taps</span>
           </div>
