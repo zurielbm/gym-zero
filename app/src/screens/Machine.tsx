@@ -3,18 +3,56 @@ import { useApp } from '../AppContext'
 import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
-import type { AiProgram, EquipmentModel, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
-import { epleyMaxLb } from '../types'
+import type { AiProgram, EquipmentModel, Exercise, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
+import { epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
+
+interface ExercisePickerProps {
+  value: string[]
+  exercises: Map<string, Exercise>
+  onChange: (ids: string[]) => void
+}
+
+function ExercisePicker({ value, exercises, onChange }: ExercisePickerProps) {
+  const available = [...exercises.values()].filter((exercise) => !value.includes(exercise.id))
+  return (
+    <div className="machine-exercise-editor">
+      {value.map((id) => (
+        <div className="machine-exercise-edit-row" key={id}>
+          <span>
+            <b>{exercises.get(id)?.name ?? id}</b>
+            <small>{exercises.get(id)?.muscleGroups.join(' · ')}</small>
+          </span>
+          <button className="icon-btn" title={`Remove ${exercises.get(id)?.name ?? 'exercise'}`} onClick={() => onChange(value.filter((other) => other !== id))}>×</button>
+        </div>
+      ))}
+      {available.length > 0 && (
+        <select
+          className="text-in"
+          value=""
+          aria-label="Add another exercise"
+          onChange={(event) => {
+            if (event.target.value) onChange([...value, event.target.value])
+          }}
+        >
+          <option value="">＋ Add another exercise…</option>
+          {available.map((exercise) => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}
+        </select>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   machineId?: string
+  /** movement selected before entering this physical machine */
+  initialExerciseId?: string
   /** catalog match for a scanned-but-unmapped QR */
   modelId?: string
   /** raw scanned QR url when this machine isn't mapped yet */
   qrUrl?: string
 }
 
-export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
+export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: Props) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, settings, refreshSettings } = useApp()
   const [machine, setMachine] = useState<GymMachine | null>(null)
   const [model, setModel] = useState<EquipmentModel | null>(null)
@@ -24,9 +62,12 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   const [baseR, setBaseR] = useState('')
   const [baseSaved, setBaseSaved] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  // map-new-machine form
+  // map-new-machine form and mapped-machine exercise editor
   const [nickname, setNickname] = useState('')
-  const [exerciseId, setExerciseId] = useState('')
+  const [draftExerciseIds, setDraftExerciseIds] = useState<string[]>([])
+  const [selectedExerciseId, setSelectedExerciseId] = useState('')
+  const [editingExercises, setEditingExercises] = useState(false)
+  const [editExerciseIds, setEditExerciseIds] = useState<string[]>([])
   const aiAvail = useAiAvailable(settings)
   const [aiInfo, setAiInfo] = useState<MachineAiInfo | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
@@ -51,39 +92,57 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
         mo = await api.getEquipmentModel(modelId)
       }
       const scannedUrl = qrUrl ?? m?.qrUrl
-      const [cached, cachedProgram] = await Promise.all([
-        scannedUrl ? api.getMachineAiInfo(scannedUrl) : undefined,
-        m ? api.getAiProgram(m.id) : undefined,
-      ])
+      const cached = scannedUrl ? await api.getMachineAiInfo(scannedUrl) : undefined
       if (!alive) return
       setMachine(m ?? null)
       setModel(mo ?? null)
       setAiInfo(cached ?? null)
-      setProgram(cachedProgram ?? null)
-      if (mo && !m) {
+      if (m) {
+        const ids = machineExerciseIds(m)
+        const selected = initialExerciseId && machineSupportsExercise(m, initialExerciseId)
+          ? initialExerciseId
+          : ids[0] ?? ''
+        setSelectedExerciseId(selected)
+        setEditExerciseIds(ids)
+      } else if (mo) {
         setNickname(mo.modelName)
-        setExerciseId(mo.exerciseIds[0] ?? '')
-      } else if (!mo && !m && cached) {
+        setDraftExerciseIds(mo.exerciseIds.filter((id) => exercises.has(id)))
+      } else if (cached) {
         const name = [cached.manufacturer, cached.modelName].filter(Boolean).join(' ')
         if (name) setNickname((cur) => cur || name)
-        if (cached.exerciseId) setExerciseId((cur) => cur || cached.exerciseId!)
+        const ids = (cached.exerciseIds?.length ? cached.exerciseIds : cached.exerciseId ? [cached.exerciseId] : [])
+          .filter((id) => exercises.has(id))
+        setDraftExerciseIds(ids)
       }
       setLoaded(true)
     }
     load()
     return () => { alive = false }
-  }, [api, machineId, modelId])
+  }, [api, exercises, initialExerciseId, machineId, modelId, qrUrl])
 
   useEffect(() => {
-    const exId = machine?.exerciseId
-    if (!exId) return
-    api.getPrevPerformance(exId, activeWorkout?.id).then(setPerf)
-    api.getBaseline(exId).then((b) => {
-      setBaseline(b)
-      setBaseW(b ? String(b.weightLb) : '')
-      setBaseR(b ? String(b.reps) : '')
+    if (!machine || !selectedExerciseId) return
+    let alive = true
+    setPerf(undefined)
+    setBaseline(undefined)
+    setProgram(null)
+    setBaseW('')
+    setBaseR('')
+    setBaseSaved(false)
+    Promise.all([
+      api.getPrevPerformance(selectedExerciseId, activeWorkout?.id),
+      api.getBaseline(selectedExerciseId),
+      api.getAiProgram(machine.id, selectedExerciseId),
+    ]).then(([nextPerf, nextBaseline, nextProgram]) => {
+      if (!alive) return
+      setPerf(nextPerf)
+      setBaseline(nextBaseline)
+      setProgram(nextProgram ?? null)
+      setBaseW(nextBaseline ? String(nextBaseline.weightLb) : '')
+      setBaseR(nextBaseline ? String(nextBaseline.reps) : '')
     })
-  }, [api, machine, activeWorkout])
+    return () => { alive = false }
+  }, [activeWorkout?.id, api, machine?.id, selectedExerciseId])
 
   if (!loaded) return null
 
@@ -100,7 +159,9 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       setAiInfo(info)
       const name = [info.manufacturer, info.modelName].filter(Boolean).join(' ')
       if (name) setNickname((cur) => cur || name)
-      if (info.exerciseId) setExerciseId((cur) => cur || info.exerciseId!)
+      const ids = (info.exerciseIds?.length ? info.exerciseIds : info.exerciseId ? [info.exerciseId] : [])
+        .filter((id) => exercises.has(id))
+      if (ids.length) setDraftExerciseIds((cur) => cur.length ? cur : ids)
       if (!info.identified) setAiError("AI couldn't identify this machine — map it manually below.")
     } catch (err) {
       setAiError(err instanceof Error ? err.message : String(err))
@@ -109,9 +170,9 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
     }
   }
 
-  const generateProgram = async (m: GymMachine, override?: Partial<Settings>) => {
+  const generateProgram = async (m: GymMachine, exerciseId: string, override?: Partial<Settings>) => {
     const config = aiConfig(settings)
-    const exercise = exercises.get(m.exerciseId)
+    const exercise = exercises.get(exerciseId)
     if (!config || !exercise) return
     setProgBusy(true)
     setProgError(null)
@@ -131,10 +192,10 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
 
   const hasProfile = !!settings.experience || !!settings.goal
 
-  const quickSetupAndGenerate = async (m: GymMachine) => {
+  const quickSetupAndGenerate = async (m: GymMachine, exerciseId: string) => {
     await api.saveSettings({ ...settings, experience: quickExp, goal: quickGoal })
     await refreshSettings()
-    await generateProgram(m, { experience: quickExp, goal: quickGoal })
+    await generateProgram(m, exerciseId, { experience: quickExp, goal: quickGoal })
   }
 
   const aiGuide = aiInfo && (aiInfo.setupTips || aiInfo.howTo.length > 0) ? (
@@ -157,20 +218,23 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   // ----- not mapped yet: name it once -----
   if (!machine) {
     const createMachine = async () => {
-      if (!nickname.trim() || !exerciseId) return
-      const m: GymMachine = {
+      if (!nickname.trim() || draftExerciseIds.length === 0) return
+      const m = normalizeMachineExercises<GymMachine>({
         id: crypto.randomUUID(),
         nickname: nickname.trim(),
-        exerciseId,
+        exerciseId: draftExerciseIds[0]!,
+        exerciseIds: draftExerciseIds,
         equipmentModelId: model?.id,
         qrUrl,
         favorite: true,
-      }
+      })
       await api.saveMachine(m)
       setMachine(m)
+      setSelectedExerciseId(m.exerciseId)
+      setEditExerciseIds(machineExerciseIds(m))
       // profile already known → build the starter program right away; otherwise
       // the mapped view shows the one-time quick-setup prompt first
-      if (aiAvail.available && hasProfile) void generateProgram(m)
+      if (aiAvail.available && hasProfile) void generateProgram(m, m.exerciseId)
     }
     return (
       <div className="page">
@@ -211,15 +275,13 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
               onChange={(e) => setNickname(e.target.value)} />
           </div>
           <div className="field">
-            <label>Exercise</label>
-            <select className="text-in" value={exerciseId} onChange={(e) => setExerciseId(e.target.value)}>
-              <option value="" disabled>Pick an exercise…</option>
-              {[...exercises.values()].map((ex) => (
-                <option key={ex.id} value={ex.id}>{ex.name}</option>
-              ))}
-            </select>
+            <label>Exercises on this machine</label>
+            <span className="small" style={{ display: 'block', marginBottom: 8 }}>
+              Add every movement this physical station can do. You will choose one when you train.
+            </span>
+            <ExercisePicker value={draftExerciseIds} exercises={exercises} onChange={setDraftExerciseIds} />
           </div>
-          <button className="big-btn" onClick={createMachine} disabled={!nickname.trim() || !exerciseId}>
+          <button className="big-btn" onClick={createMachine} disabled={!nickname.trim() || draftExerciseIds.length === 0}>
             Save my machine →
           </button>
         </div>
@@ -228,10 +290,40 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
   }
 
   // ----- mapped machine -----
-  const ex = exercises.get(machine.exerciseId)
+  const supportedExerciseIds = machineExerciseIds(machine)
+  const currentExerciseId = machineSupportsExercise(machine, selectedExerciseId)
+    ? selectedExerciseId
+    : supportedExerciseIds[0] ?? machine.exerciseId
+  const ex = exercises.get(currentExerciseId)
   const patch = async (p: Partial<GymMachine>) => {
-    const next = { ...machine, ...p }
+    const next = normalizeMachineExercises({ ...machine, ...p })
     setMachine(next)
+    await api.saveMachine(next)
+  }
+
+  const selectExercise = (id: string) => {
+    if (id === currentExerciseId) return
+    setSelectedExerciseId(id)
+    setPerf(undefined)
+    setBaseline(undefined)
+    setProgram(null)
+    setBaseW('')
+    setBaseR('')
+    setBaseSaved(false)
+    setProgError(null)
+  }
+
+  const saveExercises = async () => {
+    if (editExerciseIds.length === 0) return
+    const next = normalizeMachineExercises({
+      ...machine,
+      exerciseId: editExerciseIds.includes(machine.exerciseId) ? machine.exerciseId : editExerciseIds[0]!,
+      exerciseIds: editExerciseIds,
+    })
+    setMachine(next)
+    if (!machineSupportsExercise(next, currentExerciseId)) selectExercise(next.exerciseId)
+    setEditExerciseIds(machineExerciseIds(next))
+    setEditingExercises(false)
     await api.saveMachine(next)
   }
 
@@ -240,13 +332,21 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       const w = await api.startWorkout()
       setActiveWorkout(w)
     }
-    go({ name: 'workout', exerciseId: machine.exerciseId })
+    go({ name: 'workout', exerciseId: currentExerciseId, machineId: machine.id })
   }
 
   return (
     <div className="page">
       <div className="row" style={{ marginBottom: 8 }}>
-        <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'scan' })}>‹ Scanner</button>
+        <button
+          className="back-link"
+          style={{ margin: 0 }}
+          onClick={() => go(initialExerciseId && activeWorkout
+            ? { name: 'workout', exerciseId: currentExerciseId, machineId: machine.id }
+            : { name: 'scan' })}
+        >
+          ‹ {initialExerciseId && activeWorkout ? 'Workout' : 'Scanner'}
+        </button>
         <button
           className={`icon-btn${machine.favorite ? ' fav' : ''}`}
           title="Favorite"
@@ -257,10 +357,56 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       </div>
       <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>{machine.nickname}</h1>
       <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-        {model ? `${model.manufacturer} · ${model.modelName}` : ex?.name ?? ''}
+        {model
+          ? `${model.manufacturer} · ${model.modelName}`
+          : supportedExerciseIds.map((id) => exercises.get(id)?.name).filter(Boolean).join(' · ')}
       </p>
 
       <VideoPlayer url={videoUrl} />
+
+      {supportedExerciseIds.length > 1 && !editingExercises && (
+        <div className="machine-movement-picker">
+          <div className="row" style={{ marginBottom: 8 }}>
+            <span className="lab lm">What are you training?</span>
+            <button
+              className="back-link"
+              style={{ margin: 0 }}
+              disabled={progBusy}
+              onClick={() => { setEditExerciseIds(supportedExerciseIds); setEditingExercises(true) }}
+            >
+              Edit exercises
+            </button>
+          </div>
+          {supportedExerciseIds.map((id) => {
+            const exercise = exercises.get(id)
+            return (
+              <button
+                key={id}
+                className={`machine-movement${id === currentExerciseId ? ' current' : ''}`}
+                disabled={progBusy}
+                onClick={() => selectExercise(id)}
+              >
+                <b>{exercise?.name ?? id}</b>
+                <span>{exercise?.muscleGroups.join(' · ')}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {editingExercises && (
+        <div className="card">
+          <span className="lab lm">Exercises on this machine</span>
+          <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
+            Keep every movement this physical station can do. Past workouts stay separate by exercise.
+          </span>
+          <ExercisePicker value={editExerciseIds} exercises={exercises} onChange={setEditExerciseIds} />
+          <div className="machine-edit-actions">
+            <button className="ghost-btn" onClick={() => { setEditExerciseIds(supportedExerciseIds); setEditingExercises(false) }}>Cancel</button>
+            <button className="big-btn" disabled={editExerciseIds.length === 0} onClick={() => void saveExercises()}>Save exercises</button>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 10 }}>
         {ex?.muscleGroups.map((m) => (
@@ -278,7 +424,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             {aiAvail.available && (
               <button
                 className="ghost-btn" style={{ width: 'auto', padding: '6px 12px', fontSize: '0.7rem' }}
-                disabled={progBusy} onClick={() => void generateProgram(machine)}
+                disabled={progBusy || editingExercises} onClick={() => void generateProgram(machine, currentExerciseId)}
               >
                 {progBusy ? 'Recalculating…' : '↻ Recalculate'}
               </button>
@@ -320,17 +466,17 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
             ]}
             value={quickGoal} onPick={setQuickGoal}
           />
-          <button className="big-btn" disabled={progBusy} onClick={() => void quickSetupAndGenerate(machine)}>
+          <button className="big-btn" disabled={progBusy || editingExercises} onClick={() => void quickSetupAndGenerate(machine, currentExerciseId)}>
             {progBusy ? 'Building your program…' : 'Get my program →'}
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn" disabled={progBusy} onClick={() => void generateProgram(machine)}>
+          <button className="ghost-btn" disabled={progBusy || editingExercises} onClick={() => void generateProgram(machine, currentExerciseId)}>
             Skip — use safe defaults
           </button>
         </div>
       ) : (
         <>
-          <button className="ghost-btn" disabled={!aiAvail.available || progBusy} onClick={() => void generateProgram(machine)}>
+          <button className="ghost-btn" disabled={!aiAvail.available || progBusy || editingExercises} onClick={() => void generateProgram(machine, currentExerciseId)}>
             {progBusy ? '✦ Building your program…' : '✦ Get my starter program'}
           </button>
           {!aiAvail.available && (
@@ -369,7 +515,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
               disabled={!(parseFloat(baseW) > 0 && parseInt(baseR, 10) > 0)}
               onClick={async () => {
                 const saved = await api.saveBaseline({
-                  id: machine.exerciseId,
+                  id: currentExerciseId,
                   weightLb: parseFloat(baseW),
                   reps: parseInt(baseR, 10),
                 })
@@ -403,7 +549,19 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
       )}
 
       <div className="card">
-        <b style={{ fontSize: '0.85rem' }}>My setup</b>
+        <div className="row">
+          <b style={{ fontSize: '0.85rem' }}>My setup</b>
+          {supportedExerciseIds.length === 1 && !editingExercises && (
+            <button
+              className="back-link"
+              style={{ margin: 0 }}
+              disabled={progBusy}
+              onClick={() => { setEditExerciseIds(supportedExerciseIds); setEditingExercises(true) }}
+            >
+              Edit exercises
+            </button>
+          )}
+        </div>
         <div className="in-grid" style={{ marginTop: 8 }}>
           <div className="field" style={{ margin: 0 }}>
             <label>Seat / position</label>
@@ -435,7 +593,7 @@ export function MachineScreen({ machineId, modelId, qrUrl }: Props) {
         </div>
       )}
 
-      <button className="big-btn" onClick={logSets}>Log sets on this machine →</button>
+      <button className="big-btn" onClick={logSets}>Log {ex?.name ?? 'exercise'} sets →</button>
     </div>
   )
 }

@@ -20,6 +20,29 @@ const step = async (name, fn) => {
   catch (e) { console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await shot(name) }
 }
 const shot = async (name) => page.screenshot({ path: `e2e/fail-${name.replace(/\W+/g, '-')}.png` })
+const readStore = (storeName) => page.evaluate((name) => new Promise((resolve, reject) => {
+  const request = indexedDB.open('gym-tracker')
+  request.onerror = () => reject(request.error)
+  request.onsuccess = () => {
+    const db = request.result
+    const tx = db.transaction(name, 'readonly')
+    const all = tx.objectStore(name).getAll()
+    all.onerror = () => reject(all.error)
+    all.onsuccess = () => resolve(all.result)
+    tx.oncomplete = () => db.close()
+  }
+}), storeName)
+const putStore = (storeName, value) => page.evaluate(({ name, row }) => new Promise((resolve, reject) => {
+  const request = indexedDB.open('gym-tracker')
+  request.onerror = () => reject(request.error)
+  request.onsuccess = () => {
+    const db = request.result
+    const tx = db.transaction(name, 'readwrite')
+    tx.objectStore(name).put(row)
+    tx.onerror = () => reject(tx.error)
+    tx.oncomplete = () => { db.close(); resolve() }
+  }
+}), { name: storeName, row: value })
 
 await page.goto(process.env.BASE_URL ?? 'http://localhost:5199/')
 
@@ -94,7 +117,7 @@ await step('map machine once -> machine screen with video + video thumb', async 
   await page.getByText('Save my machine').click()
   await page.getByText('My setup').waitFor()
   await page.locator('.video-thumb').waitFor()
-  await page.getByText('Log sets on this machine').waitFor()
+  await page.getByText('Log Leg Press sets').waitFor()
 })
 
 await step('machine seat setting persists', async () => {
@@ -103,7 +126,7 @@ await step('machine seat setting persists', async () => {
 })
 
 await step('log sets from machine -> back in logger on Leg Press', async () => {
-  await page.getByText('Log sets on this machine').click()
+  await page.getByText('Log Leg Press sets').click()
   await page.locator('h1', { hasText: 'Leg Press' }).waitFor()
   await page.getByText('Seated Leg Press ▸').waitFor() // machine link under title
 })
@@ -136,6 +159,111 @@ await step('sticker lfconnect url resolves to the same machine', async () => {
   await page.locator('h1', { hasText: 'Pulldown by the mirrors' }).waitFor()
   await page.getByText('My setup').waitFor()
   await page.getByText('‹ Scanner').click()
+})
+
+await step('legacy machine without exerciseIds stays single-exercise', async () => {
+  const legacyQr = 'https://example.com/gym/legacy-chest-press'
+  await putStore('machines', {
+    id: 'legacy-chest-press',
+    nickname: 'Legacy chest press',
+    exerciseId: 'ex-chest-press',
+    qrUrl: legacyQr,
+    qrKey: 'example.com/gym/legacy-chest-press',
+    favorite: false,
+  })
+  await page.locator('.text-in').fill(legacyQr)
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Legacy chest press').waitFor()
+  await page.getByText('Log Chest Press sets').waitFor()
+  if (await page.locator('.machine-movement-picker').count() !== 0) {
+    throw new Error('legacy single-exercise machine showed a movement chooser')
+  }
+  await page.getByText('‹ Scanner').click()
+})
+
+const dualQr = 'https://example.com/gym/dual-fly-1'
+let dualMachineId = ''
+
+await step('map one physical machine to two exercises', async () => {
+  await page.locator('.text-in').fill(dualQr)
+  await page.getByText('Go', { exact: true }).click()
+  await page.locator('h1', { hasText: 'New machine' }).waitFor()
+  await page.locator('input[placeholder="Chest press by the windows"]').fill('Dual fly station')
+  await page.getByLabel('Add another exercise').selectOption({ label: 'Pec Fly' })
+  await page.getByLabel('Add another exercise').selectOption({ label: 'Rear Delt Fly' })
+  await page.getByText('Save my machine').click()
+  await page.getByText('What are you training?').waitFor()
+  await page.locator('.machine-movement', { hasText: 'Pec Fly' }).waitFor()
+  await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).waitFor()
+
+  const matches = (await readStore('machines')).filter((machine) => machine.qrUrl === dualQr)
+  if (matches.length !== 1) throw new Error(`expected one dual machine row, got ${matches.length}`)
+  if (!matches[0].exerciseIds?.includes('ex-pec-fly') || !matches[0].exerciseIds?.includes('ex-rear-delt-fly')) {
+    throw new Error('dual machine did not persist both exercises')
+  }
+  dualMachineId = matches[0].id
+})
+
+await step('log Pec Fly from the shared machine', async () => {
+  await page.getByText('Log Pec Fly sets').click()
+  await page.locator('h1', { hasText: 'Pec Fly' }).waitFor()
+  await page.getByText('Dual fly station ▸').click()
+  await page.getByText('What are you training?').waitFor()
+  await page.locator('.machine-movement.current', { hasText: 'Pec Fly' }).waitFor()
+  await page.getByText('‹ Workout').click()
+  await page.locator('h1', { hasText: 'Pec Fly' }).waitFor()
+  const row = page.locator('.set-row').first()
+  await row.locator('input').nth(0).fill('40')
+  await row.locator('input').nth(1).fill('12')
+  await row.locator('.set-done-btn').click()
+  await page.locator('.rest-toast .ghost-btn').click()
+})
+
+await step('rescan and log Rear Delt Fly without duplicating the machine', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.locator('.text-in').fill(dualQr)
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('What are you training?').waitFor()
+  await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()
+  await page.getByText('Log Rear Delt Fly sets').click()
+  await page.locator('h1', { hasText: 'Rear Delt Fly' }).waitFor()
+  await page.getByText('Dual fly station ▸').waitFor()
+  const row = page.locator('.set-row').first()
+  await row.locator('input').nth(0).fill('30')
+  await row.locator('input').nth(1).fill('12')
+  await row.locator('.set-done-btn').click()
+  await page.locator('.rest-toast .ghost-btn').click()
+
+  const matches = (await readStore('machines')).filter((machine) => machine.qrUrl === dualQr)
+  if (matches.length !== 1 || matches[0].id !== dualMachineId) throw new Error('rescan created or selected a different machine')
+  const loggedExercises = new Set((await readStore('sets'))
+    .filter((set) => set.machineId === dualMachineId)
+    .map((set) => set.exerciseId))
+  if (!loggedExercises.has('ex-pec-fly') || !loggedExercises.has('ex-rear-delt-fly')) {
+    throw new Error('sets did not preserve separate exercises on the shared machine')
+  }
+  await page.locator('.tabbar .scan-key').click()
+  await page.getByText('Point at a machine QR or a food barcode').waitFor()
+})
+
+await step('several compatible machines require an explicit workout choice', async () => {
+  await page.locator('.text-in').fill('https://example.com/gym/pec-fly-2')
+  await page.getByText('Go', { exact: true }).click()
+  await page.locator('input[placeholder="Chest press by the windows"]').fill('Second pec fly')
+  await page.getByLabel('Add another exercise').selectOption({ label: 'Pec Fly' })
+  await page.getByText('Save my machine').click()
+  await page.getByText('Log Pec Fly sets').click()
+  const machineSelect = page.locator('.workout-machine-field select')
+  await machineSelect.waitFor()
+  if (await machineSelect.inputValue() === '') throw new Error('scanned machine was not preserved in the logger')
+  await page.locator('.exercise-pill', { hasText: 'Leg Press' }).click()
+  await page.locator('h1', { hasText: 'Leg Press' }).waitFor()
+  await page.getByText('Seated Leg Press ▸').waitFor()
+  await page.locator('.exercise-pill', { hasText: 'Pec Fly' }).click()
+  await machineSelect.waitFor()
+  if (await machineSelect.inputValue() !== '') throw new Error('logger silently chose among several compatible machines')
+  await page.locator('.tabbar .scan-key').click()
+  await page.getByText('Point at a machine QR or a food barcode').waitFor()
 })
 
 await step('finish workout -> summary with volume', async () => {
@@ -309,10 +437,16 @@ await page.route('https://ai.e2e/**', async (route) => {
         progression: 'Add 10 lb when you get all 3 sets of 12.',
         warmup: '1 light set of 10 first.', cautions: '',
       })
-    : JSON.stringify({ items: [
-        { name: 'Eggs (2, scrambled)', calories: 180, protein: 12, carbs: 2, fat: 13, meal: 'breakfast' },
-        { name: 'Toast w/ butter', calories: 190, protein: 4, carbs: 24, fat: 8, meal: 'breakfast' },
-      ] })
+    : post.includes('exerciseIds contains every matching id')
+      ? JSON.stringify({
+          identified: true, manufacturer: 'Life Fitness', modelName: 'Dual Fly', confidence: 'high',
+          muscleGroups: ['chest', 'shoulders', 'back'], exerciseIds: ['ex-pec-fly', 'ex-rear-delt-fly'],
+          setupTips: 'Line up the handles with the target movement.', howTo: ['Move slowly.'],
+        })
+      : JSON.stringify({ items: [
+          { name: 'Eggs (2, scrambled)', calories: 180, protein: 12, carbs: 2, fat: 13, meal: 'breakfast' },
+          { name: 'Toast w/ butter', calories: 190, protein: 4, carbs: 24, fat: 8, meal: 'breakfast' },
+        ] })
   return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }] }) })
 })
 
@@ -322,6 +456,19 @@ await step('ai: configure proxy in Settings (mocked)', async () => {
   await page.locator('input[placeholder="https://optiplex.tailnet.ts.net"]').fill('https://ai.e2e')
   await page.getByText('Test & save').click()
   await page.getByText('Connected ✓').waitFor()
+})
+
+await step('ai: machine identification keeps every supported exercise', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=dual-fly-ai')
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Unknown QR code').waitFor()
+  await page.getByText('✦ Ask AI what this is').click()
+  await page.locator('.machine-exercise-edit-row', { hasText: 'Pec Fly' }).waitFor()
+  await page.locator('.machine-exercise-edit-row', { hasText: 'Rear Delt Fly' }).waitFor()
+  if (await page.locator('input[placeholder="Chest press by the windows"]').inputValue() !== 'Life Fitness Dual Fly') {
+    throw new Error('AI machine name was not applied')
+  }
 })
 
 await step('ai: describe-it parses food into entries (mocked)', async () => {
@@ -362,13 +509,53 @@ await step('ai: new machine -> quick setup -> starter program (mocked)', async (
 })
 
 await step('ai: set logger prefilled from program targets', async () => {
-  await page.getByText('Log sets on this machine').click()
+  await page.getByText('Log Chest Press sets').click()
   await page.locator('h1', { hasText: 'Chest Press' }).waitFor()
   await page.getByText('AI target 90×12').waitFor()
   if (await page.locator('.set-in').first().inputValue() !== '90') throw new Error('weight not prefilled from program')
   if (await page.locator('.set-in').nth(1).inputValue() !== '12') throw new Error('reps not prefilled from program')
   await page.locator('.ghost-btn.danger', { hasText: 'Discard workout' }).click() // confirm auto-accepted
   await page.getByText('Choose routine').waitFor()
+})
+
+await step('ai: matching legacy machine-keyed program still loads', async () => {
+  const machine = (await readStore('machines')).find((row) => row.qrUrl === 'https://example.com/gym/pec-fly-2')
+  if (!machine) throw new Error('second pec fly machine missing')
+  await putStore('aiPrograms', {
+    id: machine.id,
+    exerciseId: 'ex-pec-fly',
+    sets: 2,
+    reps: 10,
+    startWeightLb: 55,
+    effortCheck: 'Legacy target.',
+    restSeconds: 60,
+    progression: 'Add weight later.',
+    createdAt: Date.now(),
+  })
+  await page.locator('.tabbar .scan-key').click()
+  await page.locator('.text-in').fill('https://example.com/gym/pec-fly-2')
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('Your starter program').waitFor()
+  await page.getByText('2×10').waitFor()
+  await page.getByText('~55').waitFor()
+})
+
+await step('ai: dual machine stores one program per exercise', async () => {
+  await page.locator('.tabbar .scan-key').click()
+  await page.locator('.text-in').fill(dualQr)
+  await page.getByText('Go', { exact: true }).click()
+  await page.getByText('What are you training?').waitFor()
+  await page.getByText('✦ Get my starter program').click()
+  await page.getByText('Your starter program').waitFor()
+  await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()
+  await page.getByText('✦ Get my starter program').click()
+  await page.getByText('Your starter program').waitFor()
+
+  const programs = (await readStore('aiPrograms')).filter((program) => program.id.startsWith(`${dualMachineId}::`))
+  const exerciseIds = new Set(programs.map((program) => program.exerciseId))
+  if (programs.length !== 2 || !exerciseIds.has('ex-pec-fly') || !exerciseIds.has('ex-rear-delt-fly')) {
+    throw new Error('dual machine programs were not cached separately')
+  }
 })
 
 // ---- self-hosted food database (off-db sidecar mocked at the network layer) ----

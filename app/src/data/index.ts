@@ -1,5 +1,5 @@
 import type { BodyStatEntry, Container, DataAPI, DayDrinkStats, DayFoodStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, WeekFoodStats, Workout, WorkoutSet, WorkoutSummary } from '../types'
-import { epleyMaxLb, toDayKey } from '../types'
+import { aiProgramId, epleyMaxLb, normalizeMachineExercises, toDayKey } from '../types'
 import { db, type EquipmentModelRecord, type MachineRecord } from './db'
 import { normalizeQrUrl } from './qr'
 import { ensureSeeded } from './seed'
@@ -8,7 +8,8 @@ export { normalizeQrUrl } from './qr'
 
 const uid = () => crypto.randomUUID()
 const ready = () => ensureSeeded()
-const publicMachine = ({ qrKey: _qrKey, ...machine }: MachineRecord): GymMachine => machine
+const publicMachine = ({ qrKey: _qrKey, ...machine }: MachineRecord): GymMachine =>
+  normalizeMachineExercises(machine)
 const publicModel = ({ qrKeys: _qrKeys, ...model }: EquipmentModelRecord): EquipmentModel => model
 
 async function workoutSummary(workout: Workout): Promise<WorkoutSummary> {
@@ -30,12 +31,12 @@ export const api: DataAPI = {
   async getExercise(id) { await ready(); return db.exercises.get(id) },
   async listMachines() { await ready(); return (await db.machines.toArray()).map(publicMachine) },
   async getMachine(id) { await ready(); const machine = await db.machines.get(id); return machine && publicMachine(machine) },
-  async saveMachine(machine) { await ready(); const qrKey = machine.qrUrl ? normalizeQrUrl(machine.qrUrl) : undefined; await db.machines.put({ ...machine, ...(qrKey ? { qrKey } : {}) }) },
+  async saveMachine(machine) { await ready(); const normalized = normalizeMachineExercises(machine); const qrKey = normalized.qrUrl ? normalizeQrUrl(normalized.qrUrl) : undefined; await db.machines.put({ ...normalized, ...(qrKey ? { qrKey } : {}) }) },
   async resolveQr(url) { await ready(); const key = normalizeQrUrl(url); const [machine, model] = await Promise.all([db.machines.where('qrKey').equals(key).first(), db.equipmentModels.where('qrKeys').equals(key).first()]); const result: QrResolution = {}; if (machine) result.machine = publicMachine(machine); if (model) result.model = publicModel(model); return result },
   async getEquipmentModel(id) { await ready(); const model = await db.equipmentModels.get(id); return model && publicModel(model) },
   async getMachineAiInfo(qrUrl) { await ready(); return db.machineAi.get(normalizeQrUrl(qrUrl)) },
   async saveMachineAiInfo(info) { await ready(); await db.machineAi.put(info) },
-  async getAiProgram(machineId) { await ready(); return db.aiPrograms.get(machineId) },
+  async getAiProgram(machineId, exerciseId) { await ready(); const current = await db.aiPrograms.get(aiProgramId(machineId, exerciseId)); if (current) return current.exerciseId === exerciseId ? current : undefined; const legacy = await db.aiPrograms.get(machineId); return legacy?.exerciseId === exerciseId ? legacy : undefined },
   async saveAiProgram(program) { await ready(); await db.aiPrograms.put(program) },
   async listRoutines() { await ready(); return db.routines.toArray() },
   async saveRoutine(routine) { await ready(); await db.routines.put(routine) },

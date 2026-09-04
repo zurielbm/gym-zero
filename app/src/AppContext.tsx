@@ -5,9 +5,9 @@ export type Screen =
   | { name: 'home' }
   | { name: 'routines' }
   | { name: 'routine-edit'; routineId?: string }
-  | { name: 'workout'; exerciseId?: string }
+  | { name: 'workout'; exerciseId?: string; machineId?: string }
   | { name: 'scan' }
-  | { name: 'machine'; machineId?: string; modelId?: string; qrUrl?: string }
+  | { name: 'machine'; machineId?: string; modelId?: string; qrUrl?: string; exerciseId?: string }
   | { name: 'food'; prefill?: FoodProduct }
   | { name: 'history' }
   | { name: 'body' }

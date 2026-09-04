@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { normalizeQrUrl } from '../data/qr'
 import type { AiProgram, Exercise, GymMachine, MachineAiInfo, MealSlot, MuscleGroup, PrevPerformance, Settings, StrengthBaseline } from '../types'
+import { aiProgramId } from '../types'
 
 /**
  * Direct client for a self-hosted CLIProxyAPI (OpenAI-compatible) endpoint.
@@ -275,10 +276,10 @@ export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, not
 
 // ---------- machine identification ----------
 
-const MACHINE_SYSTEM = `You identify gym machines from the URL on their QR sticker (often Life Fitness lfconnect.com links where the "m" query param is the machine model code, or a YouTube instruction video). Use the URL, the normalized code, and your knowledge of gym equipment.
+const MACHINE_SYSTEM = `You identify gym machines from the URL on their QR sticker (often Life Fitness lfconnect.com links where the "m" query param is the machine model code, or a YouTube instruction video). Use the URL, the normalized code, and your knowledge of gym equipment. Include every movement the same physical station is designed to perform, such as both pec fly and rear delt fly on a dual-function machine.
 Reply with ONLY this JSON, no prose:
-{"identified":true,"manufacturer":"","modelName":"","confidence":"high|medium|low","muscleGroups":[],"exerciseId":"","setupTips":"one short sentence","howTo":["3-5 short form cues"]}
-muscleGroups is a subset of: ${MUSCLES.join(', ')}. exerciseId must be the id of the best-matching exercise from the provided list, or "" if none fits. If you cannot identify the machine set identified:false and confidence:"low".`
+{"identified":true,"manufacturer":"","modelName":"","confidence":"high|medium|low","muscleGroups":[],"exerciseIds":[],"setupTips":"one short sentence","howTo":["3-5 short form cues"]}
+muscleGroups is a subset of: ${MUSCLES.join(', ')}. exerciseIds contains every matching id from the provided exercise list, in primary-first order, or [] if none fits. If you cannot identify the machine set identified:false and confidence:"low".`
 
 // ---------- starter program recommendation ----------
 
@@ -333,7 +334,7 @@ export async function recommendProgram(config: AiConfig, input: ProgramInput): P
   const reps = int(raw.reps, 30) || 12
   const startWeightLb = int(raw.startWeightLb, 1000)
   return {
-    id: machine.id,
+    id: aiProgramId(machine.id, exercise.id),
     exerciseId: exercise.id,
     sets: Math.max(1, sets),
     reps: Math.max(1, reps),
@@ -359,9 +360,14 @@ export async function fetchMachineInfo(config: AiConfig, qrUrl: string, exercise
   const confidence = raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low'
   const muscleGroups = (Array.isArray(raw.muscleGroups) ? raw.muscleGroups : [])
     .filter((group): group is MuscleGroup => MUSCLES.includes(group as MuscleGroup))
-  const exerciseId = typeof raw.exerciseId === 'string' && exercises.some((exercise) => exercise.id === raw.exerciseId)
-    ? raw.exerciseId
-    : undefined
+  const validExerciseIds = new Set(exercises.map((exercise) => exercise.id))
+  const rawExerciseIds = Array.isArray(raw.exerciseIds)
+    ? raw.exerciseIds
+    : typeof raw.exerciseId === 'string' ? [raw.exerciseId] : []
+  const exerciseIds = [...new Set(rawExerciseIds.filter(
+    (id): id is string => typeof id === 'string' && validExerciseIds.has(id),
+  ))]
+  const exerciseId = exerciseIds[0]
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined
   return {
     id: key,
@@ -372,6 +378,7 @@ export async function fetchMachineInfo(config: AiConfig, qrUrl: string, exercise
     confidence,
     muscleGroups,
     exerciseId,
+    exerciseIds,
     setupTips: text(raw.setupTips, 200),
     howTo: (Array.isArray(raw.howTo) ? raw.howTo : [])
       .filter((cue): cue is string => typeof cue === 'string' && !!cue.trim())

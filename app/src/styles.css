@@ -154,6 +154,7 @@ a { color: var(--ink); }
   /* 44px touch target; negative margin keeps the visual position */
   min-height: 44px; padding: 0 16px 0 0; margin: -14px 0 -2px;
 }
+.back-link:disabled { opacity: 0.35; cursor: default; }
 .icon-btn {
   background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.1rem;
   min-width: 44px; min-height: 44px; padding: 0;
@@ -248,6 +249,32 @@ a { color: var(--ink); }
 .exercise-pill.current b { color: var(--lime); }
 .exercise-pill .row b { font-weight: 700; }
 .exercise-pill .row .small { font-family: var(--disp); font-size: 0.8rem; color: var(--muted); letter-spacing: 0.04em; }
+
+.machine-movement-picker { margin-bottom: 14px; }
+.machine-movement {
+  width: 100%; min-height: 52px; padding: 11px 12px; margin-top: 7px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--surface); border: 1px solid var(--edge); color: var(--ink);
+  cursor: pointer; text-align: left;
+}
+.machine-movement b { font-size: 0.88rem; }
+.machine-movement span { color: var(--muted); font-size: 0.72rem; text-transform: capitalize; }
+.machine-movement.current { border-color: var(--lime); box-shadow: inset 3px 0 var(--lime); }
+.machine-movement.current b { color: var(--lime); }
+.machine-exercise-editor { display: grid; gap: 8px; }
+.machine-exercise-edit-row {
+  min-height: 48px; padding: 8px 8px 8px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface); border: 1px solid var(--edge);
+}
+.machine-exercise-edit-row span { min-width: 0; }
+.machine-exercise-edit-row b { display: block; font-size: 0.84rem; }
+.machine-exercise-edit-row small { display: block; color: var(--muted); font-size: 0.68rem; text-transform: capitalize; }
+.machine-exercise-edit-row .icon-btn { color: var(--muted); flex-shrink: 0; }
+.machine-edit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.machine-edit-actions .big-btn, .machine-edit-actions .ghost-btn { margin: 0; }
+.workout-machine-field { margin-bottom: 12px; }
+.workout-machine-field .small { display: block; margin-top: 5px; }
 
 /* ============ rest bar (docked) ============ */
 .rest-toast {

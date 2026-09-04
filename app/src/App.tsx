@@ -101,10 +101,10 @@ export default function App() {
           {screen.name === 'home' && <HomeScreen />}
           {screen.name === 'routines' && <RoutinesScreen />}
           {screen.name === 'routine-edit' && <RoutineEditScreen routineId={screen.routineId} />}
-          {screen.name === 'workout' && <WorkoutScreen initialExerciseId={screen.exerciseId} />}
+          {screen.name === 'workout' && <WorkoutScreen initialExerciseId={screen.exerciseId} initialMachineId={screen.machineId} />}
           {screen.name === 'scan' && <ScanScreen />}
           {screen.name === 'machine' && (
-            <MachineScreen machineId={screen.machineId} modelId={screen.modelId} qrUrl={screen.qrUrl} />
+            <MachineScreen machineId={screen.machineId} initialExerciseId={screen.exerciseId} modelId={screen.modelId} qrUrl={screen.qrUrl} />
           )}
           {screen.name === 'food' && <FoodScreen prefill={screen.prefill} />}
           {screen.name === 'history' && <HistoryScreen />}

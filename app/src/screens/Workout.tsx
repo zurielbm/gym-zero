@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
 import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
+import { machineSupportsExercise } from '../types'
 
 interface Draft { w: string; r: string }
 
-export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: string }) {
+export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initialExerciseId?: string; initialMachineId?: string }) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
   const [routine, setRoutine] = useState<Routine | null>(null)
   const [sets, setSets] = useState<WorkoutSet[]>([])
   const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId)
+  const [selectedMachineId, setSelectedMachineId] = useState<string | undefined>(initialMachineId)
   const [prev, setPrev] = useState<Record<string, PrevPerformance | undefined>>({})
-  const [programs, setPrograms] = useState<Record<string, AiProgram | undefined>>({})
+  const [program, setProgram] = useState<AiProgram | undefined>()
   const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [machines, setMachines] = useState<GymMachine[]>([])
   const [baselines, setBaselines] = useState<Map<string, StrengthBaseline>>(new Map())
@@ -70,13 +72,30 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     )
   }, [api, workout, currentId, prev])
 
-  // AI starter program for the current exercise's machine (fallback targets when no history)
+  // Keep an explicit physical station when it supports the selected movement.
+  // A sole compatible machine can be inferred; several require a user choice.
   useEffect(() => {
-    if (!currentId || machines.length === 0 || currentId in programs) return
-    const machine = machines.find((m) => m.exerciseId === currentId)
-    if (!machine) { setPrograms((old) => ({ ...old, [currentId]: undefined })); return }
-    api.getAiProgram(machine.id).then((p) => setPrograms((old) => ({ ...old, [currentId]: p })))
-  }, [api, currentId, machines, programs])
+    if (!currentId || machines.length === 0) return
+    setSelectedMachineId((current) => {
+      if (current) {
+        const selected = machines.find((machine) => machine.id === current)
+        if (selected && machineSupportsExercise(selected, currentId)) return current
+      }
+      const compatible = machines.filter((machine) => machineSupportsExercise(machine, currentId))
+      return compatible.length === 1 ? compatible[0]!.id : undefined
+    })
+  }, [currentId, machines])
+
+  // AI starter programs belong to one machine + exercise pair.
+  useEffect(() => {
+    let alive = true
+    setProgram(undefined)
+    if (!currentId || !selectedMachineId) return () => { alive = false }
+    api.getAiProgram(selectedMachineId, currentId).then((next) => {
+      if (alive) setProgram(next)
+    })
+    return () => { alive = false }
+  }, [api, currentId, selectedMachineId])
 
   // exercise list: routine order, plus anything logged outside the routine (e.g. scanned machine)
   const exerciseIds = useMemo(() => {
@@ -97,7 +116,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   }
 
   const targetSets = (exerciseId: string) =>
-    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? programs[exerciseId]?.sets ?? 3
+    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? (exerciseId === currentId ? program?.sets : undefined) ?? 3
 
   const logged = sets
     .filter((s) => s.exerciseId === currentId)
@@ -105,7 +124,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
   const perf = currentId ? prev[currentId] : undefined
   // fallbacks only fill the gap until real history exists — history always wins,
   // then the self-reported baseline, then the AI target
-  const progTarget = currentId && !perf ? programs[currentId] : undefined
+  const progTarget = currentId && !perf ? program : undefined
   const baseline = currentId && !perf ? baselines.get(currentId) : undefined
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
@@ -125,7 +144,9 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     const weightLb = parseFloat(d.w)
     const reps = parseInt(d.r, 10)
     if (!isFinite(weightLb) || !isFinite(reps) || reps <= 0) return
-    const machine = machines.find((m) => m.exerciseId === currentId)
+    const machine = machines.find((candidate) =>
+      candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
+    )
     const saved = await api.logSet({
       workoutId: workout.id,
       exerciseId: currentId,
@@ -161,6 +182,7 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
 
   const switchExercise = (id: string) => {
     setCurrentId(id)
+    setProgram(undefined)
     setDrafts({})
     disarm()
   }
@@ -178,7 +200,10 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
     go({ name: 'routines' })
   }
 
-  const currentMachine = machines.find((m) => m.exerciseId === currentId)
+  const compatibleMachines = currentId
+    ? machines.filter((machine) => machineSupportsExercise(machine, currentId))
+    : []
+  const currentMachine = compatibleMachines.find((machine) => machine.id === selectedMachineId)
   const curName = currentId ? exercises.get(currentId)?.name ?? 'Exercise' : 'Pick an exercise'
   const curMuscles = currentId ? exercises.get(currentId)?.muscleGroups.join(' / ') : ''
 
@@ -201,12 +226,29 @@ export function WorkoutScreen({ initialExerciseId }: { initialExerciseId?: strin
               <>
                 {' · '}
                 <a style={{ cursor: 'pointer', textDecoration: 'none', fontWeight: 800 }}
-                   onClick={() => go({ name: 'machine', machineId: currentMachine.id })}>
+                   onClick={() => go({ name: 'machine', machineId: currentMachine.id, exerciseId: currentId })}>
                   {currentMachine.nickname} ▸
                 </a>
               </>
             )}
           </p>
+
+          {currentId && compatibleMachines.length > 1 && (
+            <div className="field workout-machine-field">
+              <label>Using machine</label>
+              <select
+                className="text-in"
+                value={selectedMachineId ?? ''}
+                onChange={(event) => { setSelectedMachineId(event.target.value || undefined); setProgram(undefined) }}
+              >
+                <option value="">No machine selected</option>
+                {compatibleMachines.map((machine) => (
+                  <option key={machine.id} value={machine.id}>{machine.nickname}</option>
+                ))}
+              </select>
+              <span className="small">Choose the station so setup notes and starter targets stay correct.</span>
+            </div>
+          )}
 
           {currentId && (
             <div className="card">

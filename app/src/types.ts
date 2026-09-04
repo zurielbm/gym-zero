@@ -35,7 +35,10 @@ export interface EquipmentModel {
 export interface GymMachine {
   id: string
   nickname: string
+  /** Default exercise; retained as the legacy single-exercise value. */
   exerciseId: string
+  /** All movements this physical station supports. Legacy rows omit this. */
+  exerciseIds?: string[]
   equipmentModelId?: string
   /** Raw QR URL scanned on this machine (may be unknown to the catalog). */
   qrUrl?: string
@@ -43,6 +46,29 @@ export interface GymMachine {
   setupNotes?: string
   favorite: boolean
 }
+
+/** Supported movements in stable order; old rows behave as one-exercise machines. */
+export function machineExerciseIds(machine: Pick<GymMachine, 'exerciseId' | 'exerciseIds'>): string[] {
+  return [...new Set(
+    [machine.exerciseId, ...(Array.isArray(machine.exerciseIds) ? machine.exerciseIds : [])]
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )]
+}
+
+export const machineSupportsExercise = (
+  machine: Pick<GymMachine, 'exerciseId' | 'exerciseIds'>,
+  exerciseId: string,
+): boolean => machineExerciseIds(machine).includes(exerciseId)
+
+/** Canonical shape written for every new or edited machine. */
+export function normalizeMachineExercises<T extends GymMachine>(machine: T): T {
+  const exerciseIds = machineExerciseIds(machine)
+  return { ...machine, exerciseId: exerciseIds[0] ?? machine.exerciseId, exerciseIds }
+}
+
+/** Stable key for one starter program per physical machine and movement. */
+export const aiProgramId = (machineId: string, exerciseId: string): string =>
+  `${machineId}::${exerciseId}`
 
 export interface RoutineItem {
   exerciseId: string
@@ -193,9 +219,9 @@ export interface Settings {
   limitations?: string
 }
 
-/** AI-generated starter program for one machine; cached until recalculated. */
+/** AI-generated starter program for one machine movement; cached until recalculated. */
 export interface AiProgram {
-  /** machine id */
+  /** composite machine + exercise id; legacy rows use only the machine id */
   id: string
   exerciseId: string
   sets: number
@@ -223,8 +249,10 @@ export interface MachineAiInfo {
   modelName?: string
   confidence: 'high' | 'medium' | 'low'
   muscleGroups: MuscleGroup[]
-  /** best match from the app's exercise catalog */
+  /** best match from the app's exercise catalog (legacy/single default) */
   exerciseId?: string
+  /** all matching movements when the station supports more than one */
+  exerciseIds?: string[]
   setupTips?: string
   howTo: string[]
   createdAt: number
@@ -361,7 +389,7 @@ export interface DataAPI {
   getEquipmentModel(id: string): Promise<EquipmentModel | undefined>
   getMachineAiInfo(qrUrl: string): Promise<MachineAiInfo | undefined>
   saveMachineAiInfo(info: MachineAiInfo): Promise<void>
-  getAiProgram(machineId: string): Promise<AiProgram | undefined>
+  getAiProgram(machineId: string, exerciseId: string): Promise<AiProgram | undefined>
   saveAiProgram(program: AiProgram): Promise<void>
 
   // routines

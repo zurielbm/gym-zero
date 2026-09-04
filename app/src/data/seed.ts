@@ -30,9 +30,10 @@ const exercises: Exercise[] = [
   { id: 'ex-ab-crunch-machine', name: 'Ab Crunch Machine', muscleGroups: ['core'], equipment: 'machine' },
 ]
 
-const model = (id: string, modelName: string, exerciseId: string, muscleGroups: EquipmentModelRecord['muscleGroups'], qrUrls: string[] = []): EquipmentModelRecord => ({
+const model = (id: string, modelName: string, exerciseIds: string | string[], muscleGroups: EquipmentModelRecord['muscleGroups'], qrUrls: string[] = []): EquipmentModelRecord => ({
   id, manufacturer: 'Life Fitness', modelName, qrUrls, qrKeys: qrUrls.map(normalizeQrUrl),
-  videoUrl: qrUrls[0] ?? 'https://www.youtube.com/@LifeFitnessTraining', muscleGroups, exerciseIds: [exerciseId],
+  videoUrl: qrUrls[0] ?? 'https://www.youtube.com/@LifeFitnessTraining', muscleGroups,
+  exerciseIds: Array.isArray(exerciseIds) ? exerciseIds : [exerciseIds],
 })
 
 const models: EquipmentModelRecord[] = [
@@ -43,7 +44,7 @@ const models: EquipmentModelRecord[] = [
   model('em-lf-seated-row', 'Seated Row', 'ex-seated-row', ['back']),
   model('em-lf-leg-extension', 'Leg Extension', 'ex-leg-extension', ['quads']),
   model('em-lf-leg-curl', 'Leg Curl', 'ex-leg-curl', ['hamstrings']),
-  model('em-lf-pec-fly', 'Pec Fly', 'ex-pec-fly', ['chest']),
+  model('em-lf-pec-fly', 'Pec Fly / Rear Delt', ['ex-pec-fly', 'ex-rear-delt-fly'], ['chest', 'shoulders', 'back']),
 ]
 
 const routines: Routine[] = [

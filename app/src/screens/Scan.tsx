@@ -3,6 +3,7 @@ import { useApp } from '../AppContext'
 import { createScanDetector } from '../lib/barcode'
 import { isFoodBarcode, lookupBarcode } from '../lib/food-sources'
 import type { FoodProduct, QrResolution } from '../types'
+import { machineExerciseIds } from '../types'
 
 type Found =
   | { kind: 'machine'; url: string; res: QrResolution }
@@ -167,7 +168,9 @@ export function ScanScreen() {
                       : 'New machine')}
               </b>
               <span className="small" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {found.url}
+                {found.res.machine && machineExerciseIds(found.res.machine).length > 1
+                  ? `${machineExerciseIds(found.res.machine).length} exercises · tap to choose`
+                  : found.url}
               </span>
             </div>
             <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>
