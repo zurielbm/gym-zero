@@ -10,3 +10,5 @@ e2e/.fixtures/*.y4m
 .DS_Store
 .claude
 tsconfig.tsbuildinfo
+
+e2e/qol-audit/

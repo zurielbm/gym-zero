@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
 import { machineSupportsExercise } from '../types'
 
 interface Draft { w: string; r: string }
+const workoutSelections = new Map<string, string>()
+const workoutDrafts = new Map<string, Record<string, Record<number, Draft>>>()
 
 export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initialExerciseId?: string; initialMachineId?: string }) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
   const [routine, setRoutine] = useState<Routine | null>(null)
   const [sets, setSets] = useState<WorkoutSet[]>([])
-  const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId)
+  const [addedExercises, setAddedExercises] = useState<string[]>(() => Object.keys(workoutDrafts.get(activeWorkout?.id ?? '') ?? {}))
+  const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId ?? workoutSelections.get(activeWorkout?.id ?? ''))
   const [selectedMachineId, setSelectedMachineId] = useState<string | undefined>(initialMachineId)
   const [prev, setPrev] = useState<Record<string, PrevPerformance | undefined>>({})
   const [program, setProgram] = useState<AiProgram | undefined>()
-  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
+  const [drafts, setDrafts] = useState<Record<string, Record<number, Draft>>>(() => workoutDrafts.get(activeWorkout?.id ?? '') ?? {})
   const [machines, setMachines] = useState<GymMachine[]>([])
   const [baselines, setBaselines] = useState<Map<string, StrengthBaseline>>(new Map())
   const [elapsed, setElapsed] = useState('0:00')
@@ -21,7 +25,12 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const [armedId, setArmedId] = useState<string | null>(null)
   const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const action = useAction()
+  const notify = useFeedback()
   const workout = activeWorkout
+  useEffect(() => { if (workout) workoutDrafts.set(workout.id, drafts) }, [workout, drafts])
+  useEffect(() => { if (workout && currentId) workoutSelections.set(workout.id, currentId) }, [workout, currentId])
+  useEffect(() => () => { if (disarmTimer.current) clearTimeout(disarmTimer.current) }, [])
 
   useEffect(() => {
     if (!workout) return
@@ -100,10 +109,11 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   // exercise list: routine order, plus anything logged outside the routine (e.g. scanned machine)
   const exerciseIds = useMemo(() => {
     const ids = routine ? routine.items.map((i) => i.exerciseId) : []
+    for (const id of addedExercises) if (!ids.includes(id)) ids.push(id)
     for (const s of sets) if (!ids.includes(s.exerciseId)) ids.push(s.exerciseId)
     if (currentId && !ids.includes(currentId)) ids.push(currentId)
     return ids
-  }, [routine, sets, currentId])
+  }, [routine, sets, currentId, addedExercises])
 
   if (!workout) {
     return (
@@ -129,21 +139,21 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
   const defaultFor = (i: number): Draft => {
-    const d = drafts[i]
+    const d = drafts[currentId ?? '']?.[i]
     if (d) return d
     const fromPrev = perf?.sets[i] ?? perf?.sets[perf.sets.length - 1]
     const before = logged[i - 1]
     const w = fromPrev?.weightLb ?? before?.weightLb ?? baseline?.weightLb ?? progTarget?.startWeightLb
-    const r = fromPrev?.reps ?? before?.reps ?? baseline?.reps ?? progTarget?.reps
+    const r = fromPrev?.reps ?? before?.reps ?? baseline?.reps ?? progTarget?.reps ?? routine?.items.find((item) => item.exerciseId === currentId)?.targetReps
     return { w: w != null ? String(w) : '', r: r != null ? String(r) : '' }
   }
 
   const logRow = async (i: number) => {
     if (!currentId) return
     const d = defaultFor(i)
-    const weightLb = parseFloat(d.w)
-    const reps = parseInt(d.r, 10)
-    if (!isFinite(weightLb) || !isFinite(reps) || reps <= 0) return
+    const weightLb = Number(d.w)
+    const reps = Number(d.r)
+    if (!d.w.trim() || !d.r.trim() || !isFinite(weightLb) || weightLb < 0 || !Number.isInteger(reps) || reps <= 0) return
     const machine = machines.find((candidate) =>
       candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
     )
@@ -153,11 +163,12 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
       machineId: machine?.id,
       weightLb,
       reps,
-      setNumber: i + 1,
+      setNumber: Math.max(0, ...logged.map((set) => set.setNumber)) + 1,
     })
     setSets((old) => [...old, saved])
-    setDrafts((old) => { const n = { ...old }; delete n[i]; return n })
+    setDrafts((old) => { const next = { ...old[currentId] }; delete next[i]; return { ...old, [currentId]: next } })
     startRest(progTarget?.restSeconds)
+    notify(`Set ${logged.length + 1} saved · ${weightLb} lb × ${reps}`)
   }
 
   const disarm = () => {
@@ -181,14 +192,17 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const switchExercise = (id: string) => {
+    setAddedExercises((old) => old.includes(id) ? old : [...old, id])
+    setDrafts((old) => ({ ...old, [id]: old[id] ?? {} }))
     setCurrentId(id)
     setProgram(undefined)
-    setDrafts({})
     disarm()
   }
 
   const finish = async () => {
     const summary = await api.finishWorkout(workout.id)
+    workoutDrafts.delete(workout.id)
+    workoutSelections.delete(workout.id)
     setActiveWorkout(undefined)
     go({ name: 'summary', workoutId: summary.workout.id })
   }
@@ -196,6 +210,8 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const cancel = async () => {
     if (!confirm('Discard this workout and all its sets?')) return
     await api.cancelWorkout(workout.id)
+    workoutDrafts.delete(workout.id)
+    workoutSelections.delete(workout.id)
     setActiveWorkout(undefined)
     go({ name: 'routines' })
   }
@@ -268,7 +284,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                       <button
                         className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
                         title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
-                        onClick={() => (armedId === done.id ? void deleteRow(done) : armDelete(done.id))}
+                        disabled={action.busy} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
                       >
                         {armedId === done.id ? '✕' : '✓'}
                       </button>
@@ -283,8 +299,8 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     <div>
                       <input
                         className={`set-in${isNext ? '' : ' pending'}`}
-                        inputMode="decimal" value={d.w} placeholder="lb"
-                        onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, w: e.target.value } }))}
+                        aria-label={`Set ${i + 1} weight in pounds`} disabled={action.busy} inputMode="decimal" value={d.w} placeholder="lb"
+                        onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, w: e.target.value } } }))}
                       />
                       {prevHint
                         ? <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>
@@ -298,16 +314,21 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     </div>
                     <input
                       className={`set-in${isNext ? '' : ' pending'}`}
-                      inputMode="numeric" value={d.r} placeholder="reps"
-                      onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, r: e.target.value } }))}
+                      aria-label={`Set ${i + 1} reps`} disabled={action.busy} inputMode="numeric" value={d.r} placeholder="reps"
+                      onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, r: e.target.value } } }))}
                     />
-                    <button className="set-done-btn" disabled={!isNext} onClick={() => logRow(i)}>✓</button>
+                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={action.busy || !isNext || !d.w.trim() || !d.r.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0 || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
                   </div>
                 )
               })}
             </div>
           )}
 
+          {armedId && <p className="small" role="status">Tap the red × again to remove that set.</p>}
+          {currentId && logged.length >= targetSets(currentId) && <div className="card">
+            <p className="small lm" role="status">Target complete · {logged.length} sets saved</p>
+            {exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
+          </div>}
           {perf && (
             <p className="lab" style={{ margin: '0 0 12px' }}>
               Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
@@ -317,13 +338,20 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         </div>
 
         <div className="side">
-          <p className="section-label" style={{ marginTop: 16 }}>Queue</p>
+          <p className="section-label" style={{ marginTop: 16 }}>Exercises</p>
+          <div className="field">
+            <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={action.busy} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
+              <option value="">＋ Add an exercise…</option>
+              {[...exercises.values()].filter((ex) => !exerciseIds.includes(ex.id)).map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+            </select>
+            {!exerciseIds.length && <p className="small">Choose an exercise above or scan a machine to start logging.</p>}
+          </div>
           {exerciseIds.map((id) => {
             const count = sets.filter((s) => s.exerciseId === id).length
             const target = targetSets(id)
             return (
-              <div
-                key={id}
+              <button
+                key={id} disabled={action.busy} aria-pressed={id === currentId}
                 className={`exercise-pill${id === currentId ? ' current' : ''}`}
                 onClick={() => switchExercise(id)}
               >
@@ -331,16 +359,16 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                   <b>{exercises.get(id)?.name ?? id}</b>
                   <span className="small">{count}/{target} sets</span>
                 </div>
-              </div>
+              </button>
             )
           })}
 
           <div style={{ height: 14 }} />
-          <button className="big-btn blue" onClick={finish} disabled={sets.length === 0}>
+          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={action.busy || sets.length === 0}>
             Finish workout →
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" onClick={cancel}>Discard workout</button>
+          <button className="ghost-btn danger" disabled={action.busy} onClick={() => void action.run(cancel)}>Discard workout</button>
         </div>
       </div>
     </div>

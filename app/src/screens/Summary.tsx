@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { WorkoutSummary } from '../types'
 
 export function SummaryScreen({ workoutId }: { workoutId: string }) {
   const { api, go, exercises } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
+  const [loaded, setLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkoutSummary | null>(null)
   const [notes, setNotes] = useState('')
   const [notesSaved, setNotesSaved] = useState(false)
@@ -12,14 +16,15 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
     api.getWorkoutSummary(workoutId).then((s) => {
       setSummary(s ?? null)
       setNotes(s?.workout.notes ?? '')
+      setLoaded(true)
     })
   }, [api, workoutId])
 
-  if (!summary) return null
+  if (!summary) return <div className="page"><p className="small" role="status">{loaded ? 'This workout is no longer available.' : 'Loading workout summary…'}</p>{loaded && <button className="ghost-btn" onClick={() => go({ name: 'history' })}>Back to Stats</button>}</div>
 
   const saveNotes = async () => {
-    // v1: finishWorkout doubles as the notes writer (re-stamps finishedAt by a few seconds)
-    await api.finishWorkout(workoutId, notes.trim() || undefined)
+    await api.finishWorkout(workoutId, notes.trim())
+    notify('Workout note saved')
     setNotesSaved(true)
   }
 
@@ -61,13 +66,13 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
       <div className="card">
         <span className="lab" style={{ display: 'block' }}>Notes</span>
         <textarea
-          className="text-in" rows={2} style={{ marginTop: 8, resize: 'none' }}
+          aria-label="Workout notes" className="text-in" rows={2} style={{ marginTop: 8, resize: 'none' }}
           placeholder="Felt strong. Try seat 5 on leg press next time."
           value={notes}
           onChange={(e) => { setNotes(e.target.value); setNotesSaved(false) }}
         />
         <div style={{ height: 8 }} />
-        <button className="ghost-btn" onClick={saveNotes}>{notesSaved ? 'Saved ✓' : 'Save note'}</button>
+        <button className="ghost-btn" disabled={action.busy} onClick={() => void action.run(saveNotes)}>{notesSaved ? 'Saved ✓' : 'Save note'}</button>
       </div>
 
       <button className="big-btn" onClick={() => go({ name: 'home' })}>Back to Home →</button>

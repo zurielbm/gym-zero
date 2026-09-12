@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { FeedbackProvider } from './components/Feedback'
 import { AuthScreen } from './screens/Auth'
 import { currentUser } from './data/auth-store'
 import { initSync, syncConfigured } from './data/sync'
@@ -15,6 +16,6 @@ if (!gated) initSync()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {gated ? <AuthScreen /> : <App />}
+    <FeedbackProvider>{gated ? <AuthScreen /> : <App />}</FeedbackProvider>
   </StrictMode>,
 )

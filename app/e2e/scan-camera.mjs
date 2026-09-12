@@ -82,3 +82,4 @@ await step('no page errors', async () => {
 })
 
 await browser.close()
+if (errors.length) process.exitCode = 1

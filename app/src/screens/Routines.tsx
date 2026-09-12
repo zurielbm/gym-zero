@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAction } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { Routine } from '../types'
 
@@ -12,6 +13,7 @@ function relativeDay(ts?: number) {
 
 export function RoutinesScreen() {
   const { api, go, activeWorkout, setActiveWorkout, exercises } = useApp()
+  const action = useAction()
   const [routines, setRoutines] = useState<Routine[]>([])
 
   useEffect(() => {
@@ -40,18 +42,15 @@ export function RoutinesScreen() {
         </button>
       )}
 
+      {activeWorkout && <p className="small">Your workout is still in progress. Starting a routine resumes that session; finish or discard it before starting another.</p>}
       {ordered.map((r) => (
-        <div key={r.id} className="card tappable" onClick={() => start(r)}>
+        <div key={r.id} className="card routine-card">
+          <button className="routine-open" disabled={action.busy} onClick={() => void action.run(() => start(r))}>
           <div className="row">
             <b style={{ fontSize: '1rem' }}>{r.emoji ? `${r.emoji} ` : ''}{r.name}</b>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {r.id === upNextId && <span className="chip solid" style={{ margin: 0 }}>Up next</span>}
-              <button
-                className="icon-btn" title="Edit routine" style={{ fontSize: '0.9rem' }}
-                onClick={(e) => { e.stopPropagation(); go({ name: 'routine-edit', routineId: r.id }) }}
-              >
-                ✎
-              </button>
+
             </span>
           </div>
           <span className="small" style={{ display: 'block', margin: '4px 0 6px' }}>
@@ -64,6 +63,13 @@ export function RoutinesScreen() {
               <span className="chev">›</span>
             </span>
           </div>
+          </button>
+              <button
+                className="icon-btn routine-edit" title="Edit routine" aria-label={`Edit ${r.name} routine`} style={{ fontSize: '0.9rem' }}
+                onClick={(e) => { e.stopPropagation(); go({ name: 'routine-edit', routineId: r.id }) }}
+              >
+                ✎
+              </button>
         </div>
       ))}
 
@@ -73,12 +79,13 @@ export function RoutinesScreen() {
       <button
         className="ghost-btn"
         style={{ marginTop: 8 }}
-        onClick={async () => {
+        disabled={action.busy}
+        onClick={() => void action.run(async () => {
           // freestyle session without a routine
           const w = await api.startWorkout()
           setActiveWorkout(w)
           go({ name: 'workout' })
-        }}
+        })}
       >
         ＋ Start empty workout
       </button>

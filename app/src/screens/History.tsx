@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import { GearIcon } from '../components/icons'
 import { SYNC_APPLIED_EVENT } from '../data/sync'
@@ -46,6 +47,8 @@ function WeekBars({ days, metric, target, targetLabel, barClass, gapUnlogged, he
 
 export function HistoryScreen() {
   const { api, settings, refreshSettings, exercises, go } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [week, setWeek] = useState<WeekActivity | null>(null)
   const [foodWeek, setFoodWeek] = useState<WeekFoodStats | null>(null)
   const [recent, setRecent] = useState<WorkoutSummary[]>([])
@@ -77,6 +80,7 @@ export function HistoryScreen() {
     setLatestStat(await api.getLatestBodyStat())
     setWeightTrend(await api.getBodyTrend('weightLb', 30))
     setWeightIn('')
+    notify('Weight saved')
   }
 
   const didCount = week?.days.filter((d) => d.workoutId).length ?? 0
@@ -293,8 +297,8 @@ export function HistoryScreen() {
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <input className="text-in" inputMode="decimal" placeholder="182.4" value={weightIn}
                 onChange={(e) => setWeightIn(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && saveWeight()} />
-              <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} onClick={saveWeight}>
+                onKeyDown={(e) => { if (e.key === 'Enter') void action.run(saveWeight) }} />
+              <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} disabled={action.busy || !Number.isFinite(Number(weightIn)) || Number(weightIn) <= 0} onClick={() => void action.run(saveWeight)}>
                 Log
               </button>
             </div>

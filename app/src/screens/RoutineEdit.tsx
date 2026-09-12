@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { Routine } from '../types'
 
@@ -7,6 +8,8 @@ interface ItemDraft { exerciseId: string; sets: string; reps: string }
 
 export function RoutineEditScreen({ routineId }: { routineId?: string }) {
   const { api, go, exercises } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [routine, setRoutine] = useState<Routine | null>(null)
   const [loaded, setLoaded] = useState(!routineId)
   const [name, setName] = useState('')
@@ -65,8 +68,8 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
   }))
   const valid = name.trim().length > 0
     && parsedItems.length > 0
-    && parsedItems.every((i) => isFinite(i.targetSets) && i.targetSets >= 1
-      && (i.targetReps === undefined || (isFinite(i.targetReps) && i.targetReps >= 1)))
+    && parsedItems.every((i) => isFinite(i.targetSets) && Number.isInteger(i.targetSets) && i.targetSets >= 1 && i.targetSets <= 10
+      && (i.targetReps === undefined || (isFinite(i.targetReps) && i.targetReps >= 1 && i.targetReps <= 50)))
 
   const totalSets = parsedItems.reduce((t, i) => t + (isFinite(i.targetSets) ? i.targetSets : 0), 0)
 
@@ -79,6 +82,7 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
       items: parsedItems.map((i) => ({ ...i, targetSets: Math.min(10, i.targetSets), targetReps: i.targetReps !== undefined ? Math.min(50, i.targetReps) : undefined })),
       lastUsedAt: routine?.lastUsedAt,
     })
+    notify('Routine saved')
     go({ name: 'routines' })
   }
 
@@ -127,25 +131,20 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
           </span>
         )}
         {items.map((item, i) => (
-          <div key={item.exerciseId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <div key={item.exerciseId} className="routine-item">
             <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <button className="icon-btn" style={{ fontSize: '0.8rem', minWidth: 40, minHeight: 30 }} title="Move up"
-                disabled={i === 0} onClick={() => move(i, -1)}>▲</button>
-              <button className="icon-btn" style={{ fontSize: '0.8rem', minWidth: 40, minHeight: 30 }} title="Move down"
-                disabled={i === items.length - 1} onClick={() => move(i, 1)}>▼</button>
+              <button className="icon-btn" title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>▲</button>
+              <button className="icon-btn" title="Move down" disabled={i === items.length - 1} onClick={() => move(i, 1)}>▼</button>
             </span>
-            <span className="small" style={{ flex: 1, color: 'var(--ink)', minWidth: 0 }}>
-              {exercises.get(item.exerciseId)?.name ?? item.exerciseId}
-            </span>
-            <input className="text-in" inputMode="numeric" placeholder="sets" title="Sets"
-              style={{ width: 52, textAlign: 'center' }} value={item.sets}
-              onChange={(e) => patchItem(i, { sets: e.target.value })} />
-            <span className="lab">×</span>
-            <input className="text-in" inputMode="numeric" placeholder="reps" title="Target reps (optional)"
-              style={{ width: 52, textAlign: 'center' }} value={item.reps}
-              onChange={(e) => patchItem(i, { reps: e.target.value })} />
-            <button className="icon-btn" title="Remove exercise"
-              onClick={() => setItems((old) => old.filter((_, j) => j !== i))}>✕</button>
+            <div>
+              <b className="small" style={{ color: 'var(--ink)' }}>{exercises.get(item.exerciseId)?.name ?? item.exerciseId}</b>
+              <div className="item-targets">
+                <label className="small">Sets<input className="text-in" inputMode="numeric" placeholder="sets" title="Sets" value={item.sets} onChange={(e) => patchItem(i, { sets: e.target.value })} /></label>
+                <span className="lab">×</span>
+                <label className="small">Reps<input className="text-in" inputMode="numeric" placeholder="reps" title="Target reps (optional)" value={item.reps} onChange={(e) => patchItem(i, { reps: e.target.value })} /></label>
+              </div>
+            </div>
+            <button className="icon-btn" title="Remove exercise" aria-label={`Remove ${exercises.get(item.exerciseId)?.name ?? 'exercise'}`} onClick={() => setItems((old) => old.filter((_, j) => j !== i))}>✕</button>
           </div>
         ))}
         {remaining.length > 0 && (
@@ -162,7 +161,7 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
           </div>
         )}
         <span className="small" style={{ display: 'block', marginTop: 8 }}>
-          Sets × target reps per exercise. Leave reps blank to decide on the day.
+          1–10 sets × 1–50 target reps per exercise. Leave reps blank to decide on the day.
         </span>
       </div>
 
@@ -172,14 +171,14 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
         </p>
       )}
 
-      <button className="big-btn" disabled={!valid} onClick={() => void save()}>
+      <button className="big-btn" disabled={!valid || action.busy} onClick={() => void action.run(save)}>
         Save routine →
       </button>
 
       {routine && (
         <>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" onClick={() => void remove()}>
+          <button className="ghost-btn danger" disabled={action.busy} onClick={() => void action.run(remove)}>
             {deleteArmed ? 'Tap again to delete' : 'Delete routine'}
           </button>
           <span className="small" style={{ display: 'block', marginTop: 6 }}>

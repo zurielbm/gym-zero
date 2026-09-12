@@ -11,13 +11,14 @@ const exe = `${cache}/${shellDir}/chrome-headless-shell-mac-arm64/chrome-headles
 const browser = await chromium.launch({ executablePath: exe })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const errors = []
+let failedSteps = 0
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`) })
 page.on('dialog', (d) => d.accept())
 
 const step = async (name, fn) => {
   try { await fn(); console.log(`PASS ${name}`) }
-  catch (e) { console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await page.screenshot({ path: `e2e/fail-food-week-${name.replace(/\W+/g, '-')}.png` }) }
+  catch (e) { failedSteps++; console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await page.screenshot({ path: `e2e/fail-food-week-${name.replace(/\W+/g, '-')}.png` }) }
 }
 const tab = (name) => page.locator('.tab', { hasText: name })
 
@@ -48,7 +49,7 @@ const drinks = [
   { offset: 3, volumeOz: 70 },
 ].map((r, i) => ({ id: `wk-drink-${i}`, date: dayKeyAgo(r.offset), at: Date.now() - r.offset * 86400_000, kind: 'water', volumeOz: r.volumeOz }))
 
-await page.goto('http://localhost:5199/')
+await page.goto(process.env.BASE_URL ?? 'http://localhost:5199/')
 await page.getByText('Start Workout').waitFor({ timeout: 8000 })
 
 await step('empty state points to the Fuel tab', async () => {
@@ -119,3 +120,4 @@ await step('4-week calorie trend card appears with two weeks of data', async () 
 
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'NO PAGE ERRORS')
 await browser.close()
+if (failedSteps || errors.length) process.exitCode = 1

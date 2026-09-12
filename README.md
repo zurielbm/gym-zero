@@ -27,10 +27,11 @@ Optional: describe food in plain words to log calories/macros, and identify
 unknown machine QR codes (model, muscle groups, setup + form cues), powered by
 a self-hosted [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 (OpenAI-compatible) endpoint. The phone calls the proxy **directly**, so AI
-works only while the device can reach it (e.g. on the Tailscale tailnet); the
-AI buttons gray out otherwise and every manual flow is unchanged. Machine
-identifications are cached per QR code in the `machineAi` table (synced like
-everything else), so each sticker is only asked once.
+works only while the device can reach it (e.g. on the Tailscale tailnet). Each AI
+screen shows whether the connection is ready, checking, or unavailable. You can
+retry the connection or try a request directly; manual entry stays available.
+Machine identifications are cached per QR code in the `machineAi` table (synced
+like everything else), and can be revised using the guide’s correction field.
 
 Setup:
 
@@ -178,3 +179,26 @@ host port:
 Use `/` as the internal path. Do not assign a domain to `convex-deploy`.
 Redeploy the Compose application after changing a Dokploy domain. See
 `DEPLOY.md` for the rest of the deployment flow.
+
+## Mobile quality-of-life checks
+
+AI requests show elapsed time, automatic retry status, cancellation, and recoverable errors.
+Food review always includes a correction box; text and photo corrections include manual edits.
+Machine guides and starter programs accept feedback, and programs stay separate by machine and exercise.
+Food and workout drafts survive tab navigation in the current app session (not a reload).
+Food/drink additions and deletions offer undo; linked nutrition/hydration updates commit together.
+Rest timers continue across tabs, support adding 30 seconds, and announce completion.
+
+From `app/`, with the dev server running:
+
+```bash
+npx playwright-core install chromium
+BASE_URL=http://localhost:5173 npm run e2e:qol
+BASE_URL=http://localhost:5173 npm run e2e:machine-ai
+BASE_URL=http://localhost:5173 npm run e2e
+```
+
+The AI checks use deterministic proxy responses, including failed, delayed, and malformed
+responses. They do not validate a live proxy, model quality, or real-device camera permissions.
+The QoL suite saves screenshots under `app/e2e/qol-audit/` and checks 320, 375, 390, 430,
+and 1280px layouts. Existing walkthrough scripts now exit unsuccessfully when a step fails.

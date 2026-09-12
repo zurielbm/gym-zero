@@ -24,20 +24,20 @@ export function TabBar() {
   const { current, navTo, go, scanning } = useNavState()
   const [left, right] = [tabs.slice(0, 2), tabs.slice(2)]
   const tab = (t: (typeof tabs)[number]) => (
-    <button key={t.key} className={`tab${current === t.key ? ' on' : ''}`} onClick={() => navTo(t)}>
+    <button key={t.key} className={`tab${current === t.key ? ' on' : ''}`} aria-current={current === t.key ? 'page' : undefined} onClick={() => navTo(t)}>
       <t.icon />
       {t.label}
     </button>
   )
   return (
-    <nav className="tabbar">
+    <nav className="tabbar" aria-label="Main navigation">
       {left.map(tab)}
       <button
         className={`scan-key${scanning ? ' on' : ''}`}
-        title="Scan machine QR"
+        title="Scan machine QR or food barcode" aria-label="Scan machine QR or food barcode"
         onClick={() => go({ name: 'scan' })}
       >
-        <ScanIcon />
+        <ScanIcon /><span className="scan-label">Scan</span>
       </button>
       {right.map(tab)}
     </nav>
@@ -53,7 +53,7 @@ export function TopNav() {
       <span className="brand">Gym<span className="lm">Zero</span></span>
       <div className="links">
         {tabs.map((t) => (
-          <button key={t.key} className={current === t.key ? 'on' : ''} onClick={() => navTo(t)}>
+          <button key={t.key} className={current === t.key ? 'on' : ''} aria-current={current === t.key ? 'page' : undefined} onClick={() => navTo(t)}>
             {t.label}
           </button>
         ))}
@@ -69,7 +69,7 @@ export function TopNav() {
         </button>
         <button
           className={`scan-key${scanning ? ' on' : ''}`}
-          title="Scan machine QR"
+          title="Scan machine QR or food barcode" aria-label="Scan machine QR or food barcode"
           onClick={() => go({ name: 'scan' })}
         >
           <ScanIcon />

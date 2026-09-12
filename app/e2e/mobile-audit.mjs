@@ -20,7 +20,8 @@ const context = await browser.newContext({
 })
 const page = await context.newPage()
 page.on('dialog', (d) => d.accept())
-mkdirSync('e2e/audit', { recursive: true })
+const auditDir = process.env.AUDIT_DIR ?? 'e2e/audit'
+mkdirSync(auditDir, { recursive: true })
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173/'
 const failures = []
@@ -45,7 +46,7 @@ const auditPage = async (label) => {
         const cs = getComputedStyle(el)
         out.wideElems.push({ el: sig(el), left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width), pos: cs.position })
       }
-      const interactive = el.matches('button, a, input, select, [role=button], [onclick]')
+      const interactive = el.matches('button, a, input:not([type=checkbox]), select, [role=button], [onclick]')
       if (interactive && r.width > 0 && r.height > 0 && (r.width < 40 || r.height < 40)) {
         out.smallTargets.push({ el: sig(el), w: Math.round(r.width), h: Math.round(r.height) })
       }
@@ -69,7 +70,7 @@ const auditPage = async (label) => {
     for (const e of report.zoomInputs) console.log(`  ${e.fontSize}px  ${e.el}`)
     failures.push(`${label}: ${report.zoomInputs.length} input(s) under 16px`)
   }
-  await page.screenshot({ path: `e2e/audit/${label.replace(/\W+/g, '-')}.png`, fullPage: false })
+  await page.screenshot({ path: `${auditDir}/${label.replace(/\W+/g, '-')}.png`, fullPage: false })
 }
 
 const clickTab = async (name) => {

@@ -451,6 +451,7 @@ export interface DataAPI {
   getWeekActivity(): Promise<WeekActivity>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
+  patchSettings(patch: Partial<Settings>): Promise<void>
 }
 
 /** Sensible default meal slot from the current hour. */

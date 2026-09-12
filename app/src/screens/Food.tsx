@@ -1,3 +1,8 @@
+import { liveQuery } from 'dexie'
+import { AiConnection, AiTaskStatus } from '../components/AiStatus'
+import { useAction, useFeedback } from '../components/Feedback'
+import { useAiTask } from '../hooks/useAiTask'
+import { addFoods, deleteFoodWithUndo } from '../data/food-actions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
 import { HydrationCard } from '../components/HydrationCard'
@@ -14,6 +19,8 @@ const slotLabel: Record<MealSlot, string> = {
 /** Scanned barcode → portion → log. Servings when the label declares one, grams otherwise. */
 function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onDone: () => void; onDismiss: () => void }) {
   const { api } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [name, setName] = useState(product.brand ? `${product.name} (${product.brand})` : product.name)
   const [mode, setMode] = useState<'serving' | 'grams'>(product.servingG ? 'serving' : 'grams')
   const [qty, setQty] = useState('1')
@@ -40,6 +47,7 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
       grams: Math.round(g),
       servings: mode === 'serving' ? parseFloat(qty) || undefined : undefined,
     })
+    notify(`${name.trim()} logged`)
     onDone()
   }
 
@@ -51,7 +59,7 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
       </div>
       <div className="field" style={{ marginTop: 8 }}>
         <label>Food</label>
-        <input className="text-in" value={name} onChange={(e) => setName(e.target.value)} />
+        <input aria-label="Scanned food name" className="text-in" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       {product.servingG ? (
         <div className="seg" style={{ marginBottom: 10 }}>
@@ -62,12 +70,12 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
       {mode === 'serving' ? (
         <div className="field">
           <label>Servings · 1 = {product.servingLabel ?? `${product.servingG} g`}</label>
-          <input className="text-in" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+          <input aria-label="Servings" className="text-in" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
         </div>
       ) : (
         <div className="field">
           <label>Grams</label>
-          <input className="text-in" inputMode="decimal" value={grams} onChange={(e) => setGrams(e.target.value)} />
+          <input aria-label="Grams" className="text-in" inputMode="decimal" value={grams} onChange={(e) => setGrams(e.target.value)} />
         </div>
       )}
       <span className="small" style={{ display: 'block', margin: '0 0 10px', ...(g > 0 ? { color: 'var(--lime)' } : {}) }}>
@@ -77,11 +85,11 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
       </span>
       <div className="field">
         <label>Meal</label>
-        <select className="text-in" value={meal} onChange={(e) => setMeal(e.target.value as MealSlot)}>
+        <select aria-label="Meal" className="text-in" value={meal} onChange={(e) => setMeal(e.target.value as MealSlot)}>
           {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
         </select>
       </div>
-      <button className="big-btn" disabled={g <= 0 || !name.trim()} onClick={() => void add()}>
+      <button className="big-btn" disabled={action.busy || !Number.isFinite(g) || g <= 0 || !name.trim()} onClick={() => void action.run(add)}>
         Log it →
       </button>
     </div>
@@ -91,6 +99,8 @@ function BarcodeCard({ product, onDone, onDismiss }: { product: FoodProduct; onD
 /** Tap-to-edit for a logged entry; the ×portion field re-scales every number at once. */
 function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: () => void; onCancel: () => void }) {
   const { api } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [f, setF] = useState({
     name: entry.name,
     calories: String(entry.calories),
@@ -103,7 +113,7 @@ function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: 
   const scale = parseFloat(f.scale)
   const scaling = isFinite(scale) && scale > 0 && scale !== 1
   const times = (v: string) => Math.round((parseInt(v, 10) || 0) * (scaling ? scale : 1))
-  const ok = !!f.name.trim() && isFinite(parseInt(f.calories, 10)) && (!f.scale.trim() || (isFinite(scale) && scale > 0))
+  const ok = !!f.name.trim() && [f.calories, f.protein, f.carbs, f.fat].every((v) => !v.trim() || (Number.isFinite(Number(v)) && Number(v) >= 0)) && !!f.calories.trim() && (!f.scale.trim() || (isFinite(scale) && scale > 0))
 
   const save = async () => {
     if (!ok) return
@@ -123,6 +133,7 @@ function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: 
         ? (servings != null ? `${servings} serving${servings === 1 ? '' : 's'} · ${grams} g` : `${grams} g`)
         : entry.detail,
     })
+    notify('Food updated')
     onSaved()
   }
 
@@ -130,7 +141,7 @@ function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: 
     <div style={{ padding: '8px 0 4px' }}>
       <div className="field">
         <label>Food</label>
-        <input className="text-in" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        <input aria-label="Food name" className="text-in" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         {([
@@ -142,20 +153,20 @@ function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: 
           <div key={c.key} style={{ flex: 1, minWidth: 0 }}>
             <span className="lab" style={{ display: 'block', fontSize: '0.625rem', marginBottom: 3 }}>{c.label}</span>
             <input className="text-in" style={{ padding: '8px 6px', textAlign: 'center' }} inputMode="numeric"
-              value={f[c.key]} onChange={(e) => setF({ ...f, [c.key]: e.target.value })} />
+              aria-label={c.label} value={f[c.key]} onChange={(e) => setF({ ...f, [c.key]: e.target.value })} />
           </div>
         ))}
       </div>
       <div className="in-grid" style={{ marginTop: 8 }}>
         <div className="field" style={{ margin: 0 }}>
           <label>Meal</label>
-          <select className="text-in" value={f.meal} onChange={(e) => setF({ ...f, meal: e.target.value as MealSlot })}>
+          <select aria-label="Meal" className="text-in" value={f.meal} onChange={(e) => setF({ ...f, meal: e.target.value as MealSlot })}>
             {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
           </select>
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label>Portion × (1.5 = half again)</label>
-          <input className="text-in" inputMode="decimal" value={f.scale}
+          <input className="text-in" inputMode="decimal" aria-label="Portion multiplier" value={f.scale}
             onChange={(e) => setF({ ...f, scale: e.target.value })} />
         </div>
       </div>
@@ -165,34 +176,45 @@ function EntryEditor({ entry, onSaved, onCancel }: { entry: FoodEntry; onSaved: 
         </span>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={!ok} onClick={() => void save()}>Save</button>
+        <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={action.busy || !ok} onClick={() => void action.run(save)}>Save</button>
         <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} onClick={onCancel}>Cancel</button>
       </div>
     </div>
   )
 }
 
+let foodDraft: { form: { name: string; calories: string; protein: string; carbs: string; fat: string; meal: MealSlot; save: boolean }; aiText: string; aiResult: AiFoodResult | null; aiReq: AiFoodRequest | null; aiAnswer: string; aiMeal: MealSlot; showAdd: boolean } | undefined
+
 export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
   const { api, go, settings } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
+  const task = useAiTask()
+  const aiBusy = task.busy
+  const retryRef = useRef<() => void>(() => {})
+  const composerRef = useRef<HTMLDivElement>(null)
   const today = toDayKey(new Date())
   const [entries, setEntries] = useState<FoodEntry[]>([])
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
   const [saved, setSaved] = useState<SavedMeal[]>([])
   const [recent, setRecent] = useState<FoodEntry[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', meal: currentSlot() as MealSlot, save: false })
+  const [showAdd, setShowAdd] = useState(foodDraft?.showAdd ?? false)
+  const [form, setForm] = useState(foodDraft?.form ?? { name: '', calories: '', protein: '', carbs: '', fat: '', meal: currentSlot() as MealSlot, save: false })
   const ai = useAiAvailable(settings)
-  const [aiText, setAiText] = useState('')
-  const [aiBusy, setAiBusy] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [aiResult, setAiResult] = useState<AiFoodResult | null>(null)
-  const [aiReq, setAiReq] = useState<AiFoodRequest | null>(null)
-  const [aiAnswer, setAiAnswer] = useState('')
-  const [showFeedback, setShowFeedback] = useState(false)
-  const [aiMeal, setAiMeal] = useState<MealSlot>(currentSlot())
+  const [aiText, setAiText] = useState(foodDraft?.aiText ?? '')
+  const [aiResult, setAiResult] = useState<AiFoodResult | null>(foodDraft?.aiResult ?? null)
+  const [aiReq, setAiReq] = useState<AiFoodRequest | null>(foodDraft?.aiReq ?? null)
+  const [aiAnswer, setAiAnswer] = useState(foodDraft?.aiAnswer ?? '')
+  const [aiMeal, setAiMeal] = useState<MealSlot>(foodDraft?.aiMeal ?? currentSlot())
   const [scanned, setScanned] = useState<FoodProduct | undefined>(prefill)
   const photoRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    foodDraft = { form, aiText, aiResult, aiReq, aiAnswer, aiMeal, showAdd }
+  }, [form, aiText, aiResult, aiReq, aiAnswer, aiMeal, showAdd])
+  useEffect(() => {
+    if (showAdd || aiResult || scanned) composerRef.current?.scrollIntoView({ block: 'start' })
+  }, [showAdd, !!aiResult, !!scanned])
 
   const refresh = useCallback(async () => {
     setEntries(await api.listFood(today))
@@ -200,16 +222,19 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
   }, [api, today])
 
   useEffect(() => {
-    refresh()
-    api.listSavedMeals().then(setSaved)
-    api.listRecentFood(14).then(setRecent)
-  }, [api, refresh])
+    const subscription = liveQuery(async () => ({
+      entries: await api.listFood(today), stats: await api.getDayFoodStats(today),
+      saved: await api.listSavedMeals(), recent: await api.listRecentFood(14),
+    })).subscribe({ next: (data) => { setEntries(data.entries); setStats(data.stats); setSaved(data.saved); setRecent(data.recent) }, error: () => notify('Could not load meals. Please reload.', { error: true }) })
+    return () => subscription.unsubscribe()
+  }, [api, today, notify])
 
   const addSaved = async (m: SavedMeal) => {
-    await api.addFood({
+    const entry = await api.addFood({
       date: today, meal: currentSlot(), name: m.name,
       calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat,
     })
+    notify(`${m.name} logged`, { undo: () => api.deleteFood(entry.id) })
     refresh()
   }
 
@@ -220,11 +245,12 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     .slice(0, 6)
 
   const grab = async (e: FoodEntry) => {
-    await api.addFood({
+    const entry = await api.addFood({
       date: today, meal: currentSlot(), name: e.name, detail: e.detail,
       calories: e.calories, protein: e.protein, carbs: e.carbs, fat: e.fat,
       grams: e.grams, servings: e.servings,
     })
+    notify(`${e.name} logged`, { undo: () => api.deleteFood(entry.id) })
     refresh()
   }
 
@@ -233,82 +259,59 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     const protein = parseInt(form.protein, 10) || 0
     const carbs = form.carbs.trim() ? parseInt(form.carbs, 10) || 0 : undefined
     const fat = form.fat.trim() ? parseInt(form.fat, 10) || 0 : undefined
-    if (!form.name.trim() || !isFinite(calories)) return
-    await api.addFood({ date: today, meal: form.meal, name: form.name.trim(), calories, protein, carbs, fat })
+    if (!manualValid) return
+    const entry = await api.addFood({ date: today, meal: form.meal, name: form.name.trim(), calories, protein, carbs, fat })
     if (form.save) {
-      const m = await api.saveSavedMeal({ name: form.name.trim(), calories, protein, carbs, fat })
-      setSaved((old) => [...old, m])
+      await api.saveSavedMeal({ name: form.name.trim(), calories, protein, carbs, fat })
     }
+    notify(`${form.name.trim()} logged`, { undo: () => api.deleteFood(entry.id) })
     setForm({ name: '', calories: '', protein: '', carbs: '', fat: '', meal: currentSlot(), save: false })
     setShowAdd(false)
     refresh()
   }
 
   const remove = async (id: string) => {
-    await api.deleteFood(id)
-    refresh()
+    const undo = await deleteFoodWithUndo(id)
+    notify('Food removed', { undo })
   }
 
   const analyze = async () => {
     const config = aiConfig(settings)
-    if (!config || !aiText.trim() || aiBusy) return
-    setAiBusy(true)
-    setAiError(null)
-    try {
-      const result = await parseFood(config, aiText)
-      setAiResult(result)
-      setAiReq({ kind: 'text', text: aiText })
-      setAiAnswer('')
-      setShowFeedback(false)
+    if (!config || !aiText.trim()) return
+    const request: AiFoodRequest = { kind: 'text', text: aiText }
+    retryRef.current = () => void analyze()
+    await task.run('Estimating your food…', (options) => parseFood(config, request.text, undefined, options), (result) => {
+      setAiResult(result); setAiReq(request); setAiAnswer('')
       setAiMeal(result.items.find((item) => item.meal)?.meal ?? currentSlot())
-    } catch (err) {
-      setAiError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAiBusy(false)
-    }
+    })
   }
 
   const analyzePhoto = async (file: File) => {
     const config = aiConfig(settings)
-    if (!config || aiBusy) return
-    setAiBusy(true)
-    setAiError(null)
-    try {
-      // any text already typed rides along as a note ("the bowl on the left is mine")
+    if (!config) return
+    retryRef.current = () => void analyzePhoto(file)
+    await task.run('Reading your food photo…', async (options) => {
       const photoDataUrl = await downscalePhoto(file)
-      const result = await parseFoodPhoto(config, photoDataUrl, aiText)
-      setAiResult(result)
-      setAiReq({ kind: 'photo', photoDataUrl, note: aiText })
-      setAiAnswer('')
-      setShowFeedback(false)
+      const result = await parseFoodPhoto(config, photoDataUrl, aiText, undefined, options)
+      return { result, request: { kind: 'photo' as const, photoDataUrl, note: aiText } }
+    }, ({ result, request }) => {
+      setAiResult(result); setAiReq(request); setAiAnswer('')
       setAiMeal(result.items.find((item) => item.meal)?.meal ?? currentSlot())
-    } catch (err) {
-      setAiError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAiBusy(false)
-    }
+    })
   }
 
-  /** Send the user's answer back with the original request as context; the AI revises its items. */
   const answerQuestion = async (answer: string) => {
     const config = aiConfig(settings)
-    if (!config || !aiResult || !aiReq || !answer.trim() || aiBusy) return
-    setAiBusy(true)
-    setAiError(null)
-    try {
-      const followup = { priorRaw: aiResult.raw, answer: answer.trim() }
-      const result = aiReq.kind === 'photo'
-        ? await parseFoodPhoto(config, aiReq.photoDataUrl, aiReq.note, followup)
-        : await parseFood(config, aiReq.text, followup)
-      setAiResult(result)
-      setAiAnswer('')
-      setShowFeedback(false)
-      setAiMeal((meal) => result.items.find((item) => item.meal)?.meal ?? meal)
-    } catch (err) {
-      setAiError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAiBusy(false)
-    }
+    if (!config || !aiResult || !aiReq || !answer.trim()) return
+    retryRef.current = () => void answerQuestion(answer)
+    // Include edits/removals/merges, so a correction never resurrects the old estimate.
+    const followup = { priorRaw: JSON.stringify({ items: aiResult.items, question: aiResult.question }), answer: answer.trim() }
+    await task.run('Updating with your feedback…', (options) => aiReq.kind === 'photo'
+      ? parseFoodPhoto(config, aiReq.photoDataUrl, aiReq.note, followup, options)
+      : parseFood(config, aiReq.text, followup, options), (result) => {
+        setAiResult(result); setAiAnswer('')
+        notify('Estimate updated — review the numbers')
+      })
   }
 
   const patchAiItem = (index: number, patch: Partial<AiFoodItem>) =>
@@ -338,21 +341,21 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     setAiResult(null)
     setAiReq(null)
     setAiAnswer('')
-    setShowFeedback(false)
+    task.clear()
   }
 
+  const manualValid = !!form.name.trim() && !!form.calories.trim()
+    && [form.calories, form.protein, form.carbs, form.fat].every((value) => !value.trim() || (Number.isFinite(Number(value)) && Number(value) >= 0))
+  const aiValid = !!aiResult?.items.length && aiResult.items.every((item) => item.name.trim() && [item.calories, item.protein, item.carbs ?? 0, item.fat ?? 0].every((n) => Number.isFinite(n) && n >= 0))
   const addAllAi = async () => {
-    for (const item of aiResult?.items ?? []) {
-      if (!item.name.trim() || !isFinite(item.calories)) continue
-      await api.addFood({
-        date: today, meal: aiMeal, name: item.name.trim(),
-        calories: item.calories, protein: item.protein, carbs: item.carbs, fat: item.fat,
-      })
-    }
-    closeAi()
-    setAiText('')
-    setShowAdd(false)
-    refresh()
+    if (!aiResult || !aiValid || aiBusy) return
+    const rows = await addFoods(aiResult.items.map((item) => ({
+      date: today, meal: aiMeal, name: item.name.trim(),
+      calories: item.calories, protein: item.protein, carbs: item.carbs, fat: item.fat,
+    })))
+    notify(`${rows.length} food item${rows.length === 1 ? '' : 's'} logged`, { undo: async () => { for (const row of rows) await api.deleteFood(row.id) } })
+    closeAi(); setAiText(''); setShowAdd(false)
+    void refresh()
   }
 
   const calPct = Math.min(100, (stats.calories / settings.calorieTarget) * 100)
@@ -367,6 +370,10 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
       </div>
       <h1 className="p-h1" style={{ margin: '8px 0 2px' }}>Fuel<span className="dot">.</span></h1>
 
+      <div className="food-actions">
+        <button className="big-btn" onClick={() => { setShowAdd(true); composerRef.current?.scrollIntoView({ block: 'start' }) }}>＋ Log food</button>
+        <button className="ghost-btn" onClick={() => go({ name: 'scan' })}>Scan barcode</button>
+      </div>
       <div className="macro-row">
         <span className="lab">Calories</span>
         <span className="num">
@@ -383,17 +390,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
         </span>
       </div>
       <div className="bar"><i className="alt" style={{ width: `${proPct}%` }} /></div>
-      {/* carbs & fat are context, not targets: gray bars show their share of the calorie target */}
-      <div className="macro-row">
-        <span className="lab">Carbs</span>
-        <span className="num">{stats.carbs}<span className="of"> g</span></span>
-      </div>
-      <div className="bar"><i className="dim" style={{ width: `${Math.min(100, ((stats.carbs * 4) / settings.calorieTarget) * 100)}%` }} /></div>
-      <div className="macro-row">
-        <span className="lab">Fat</span>
-        <span className="num">{stats.fat}<span className="of"> g</span></span>
-      </div>
-      <div className="bar"><i className="dim" style={{ width: `${Math.min(100, ((stats.fat * 9) / settings.calorieTarget) * 100)}%` }} /></div>
+      <p className="small macro-context">{stats.carbs}g carbs · {stats.fat}g fat <span>{Math.max(0, settings.calorieTarget - stats.calories).toLocaleString()} kcal to target</span></p>
 
       <div style={{ height: 18 }} />
       <HydrationCard onFoodChanged={() => void refresh()} />
@@ -420,17 +417,18 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                     />
                   ) : (
                     <div key={e.id} className="meal-row">
-                      <span style={{ cursor: 'pointer', flex: 1, minWidth: 0 }} title="Tap to edit" onClick={() => setEditingId(e.id)}>
+                      <button className="meal-edit" aria-label={`Edit ${e.name}`} style={{ cursor: 'pointer', flex: 1, minWidth: 0 }} title="Tap to edit" onClick={() => setEditingId(e.id)}>
                         {e.name}
                         {e.detail && <span className="small" style={{ display: 'block' }}>{e.detail}</span>}
-                      </span>
+                        <span className="edit-affordance">Edit</span>
+                      </button>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className="small">
                           {e.calories} kcal · {e.protein}P
                           {e.carbs != null && ` · ${e.carbs}C`}
                           {e.fat != null && ` · ${e.fat}F`}
                         </span>
-                        <button className="del" title="Delete" onClick={() => remove(e.id)}>✕</button>
+                        <button className="del" title="Delete" aria-label={`Delete ${e.name}`} disabled={action.busy} onClick={() => void action.run(() => remove(e.id))}>✕</button>
                       </span>
                     </div>
                   )
@@ -447,7 +445,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
           )}
         </div>
 
-        <div className="fd-side">
+        <div className="fd-side" ref={composerRef}>
           {scanned && (
             <BarcodeCard
               product={scanned}
@@ -455,37 +453,15 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               onDismiss={() => setScanned(undefined)}
             />
           )}
-          {grabbable.length > 0 && (
-            <>
-              <p className="section-label">Grab again — recent, same portion</p>
-              <div style={{ marginBottom: 10 }}>
-                {grabbable.map((e) => (
-                  <button key={e.id} type="button" className="chip btn" onClick={() => void grab(e)}>
-                    {e.name} · {e.calories} kcal
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {saved.length > 0 && (
-            <>
-              <p className="section-label">Quick add — saved meals</p>
-              <div style={{ marginBottom: 10 }}>
-                {saved.map((m) => (
-                  <button key={m.id} type="button" className="chip green btn" onClick={() => void addSaved(m)}>
-                    {m.emoji ? `${m.emoji} ` : ''}{m.name}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
           {aiResult ? (
             <div className="card">
               <div className="row">
                 <span className="lab lm">✦ AI estimate — review</span>
                 <span className="lab">{aiResult.items.reduce((t, i) => t + i.calories, 0)} kcal</span>
               </div>
+              <p className="small">Not logged yet. Check the portions, edit any number, or tell AI what to change.</p>
+              {aiReq?.kind === 'photo' && <img className="food-photo" src={aiReq.photoDataUrl} alt="Your food photo" />}
+              <AiTaskStatus task={task} onRetry={() => retryRef.current()} />
               {aiResult.question && (
                 <div style={{ border: '1px solid var(--lime)', padding: '10px 12px', margin: '10px 0 4px' }}>
                   <span className="small" style={{ color: 'var(--ink)', display: 'block', marginBottom: 8 }}>
@@ -498,16 +474,6 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                         {opt}
                       </button>
                     ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                    <input className="text-in" style={{ flex: 1, minWidth: 0 }} placeholder="Or answer in your own words…"
-                      value={aiAnswer} disabled={aiBusy}
-                      onChange={(e) => setAiAnswer(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') void answerQuestion(aiAnswer) }} />
-                    <button className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }}
-                      disabled={aiBusy || !aiAnswer.trim()} onClick={() => void answerQuestion(aiAnswer)}>
-                      {aiBusy ? '…' : '↩'}
-                    </button>
                   </div>
                   {aiResult.items.length > 0 && (
                     <span className="small" style={{ display: 'block', marginTop: 6 }}>
@@ -524,9 +490,9 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               {aiResult.items.map((item, i) => (
                 <div key={i} style={{ marginTop: 10 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input className="text-in" style={{ flex: 1, minWidth: 0 }} value={item.name}
+                    <input className="text-in" style={{ flex: 1, minWidth: 0 }} value={item.name} aria-label={`Food ${i + 1} name`} disabled={aiBusy || action.busy}
                       onChange={(e) => patchAiItem(i, { name: e.target.value })} />
-                    <button className="del" title="Remove" onClick={() => dropAiItem(i)}>✕</button>
+                    <button className="del" title="Remove" aria-label={`Remove ${item.name}`} disabled={aiBusy || action.busy} onClick={() => dropAiItem(i)}>✕</button>
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     {([
@@ -538,8 +504,8 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                       <div key={f.key} style={{ flex: 1, minWidth: 0 }}>
                         <span className="lab" style={{ display: 'block', fontSize: '0.625rem', marginBottom: 3 }}>{f.label}</span>
                         <input className="text-in" style={{ padding: '8px 6px', textAlign: 'center' }} inputMode="numeric"
-                          value={item[f.key] ?? ''}
-                          onChange={(e) => patchAiItem(i, { [f.key]: parseInt(e.target.value, 10) || 0 })} />
+                          value={item[f.key] ?? ''} aria-label={`Food ${i + 1} ${f.label}`} disabled={aiBusy || action.busy}
+                          onChange={(e) => patchAiItem(i, { [f.key]: Math.max(0, parseInt(e.target.value, 10) || 0) })} />
                       </div>
                     ))}
                   </div>
@@ -548,79 +514,57 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               {aiResult.items.length > 0 && (
                 <span className="small" style={{ display: 'block', marginTop: 6 }}>Grams for protein, carbs and fat — estimates, tweak anything.</span>
               )}
-              {!aiResult.question && aiResult.items.length > 0 && (
-                showFeedback ? (
-                  <div style={{ marginTop: 10 }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input className="text-in" style={{ flex: 1, minWidth: 0 }}
-                        placeholder="e.g. I ate 3 of these · it was a large bowl" autoFocus
-                        value={aiAnswer} disabled={aiBusy}
-                        onChange={(e) => setAiAnswer(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void answerQuestion(aiAnswer) }} />
-                      <button className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }}
-                        disabled={aiBusy || !aiAnswer.trim()} onClick={() => void answerQuestion(aiAnswer)}>
-                        {aiBusy ? '…' : '↩'}
-                      </button>
-                    </div>
-                    <span className="small" style={{ display: 'block', marginTop: 6 }}>
-                      It re-checks {aiReq?.kind === 'photo' ? 'the photo' : 'your description'} with your note and fixes the numbers.
-                    </span>
-                  </div>
-                ) : (
-                  <button className="ghost-btn" style={{ width: 'auto', padding: '8px 14px', marginTop: 10 }}
-                    disabled={aiBusy} onClick={() => setShowFeedback(true)}>
-                    ✎ Did it get something wrong? Tell it
-                  </button>
-                )
-              )}
+              <div className="ai-feedback">
+                <label className="lab" htmlFor="food-feedback">Correct or clarify</label>
+                <textarea id="food-feedback" className="text-in" rows={2}
+                  placeholder="e.g. I ate half, no sauce, or this is chicken"
+                  value={aiAnswer} disabled={aiBusy || action.busy} onChange={(e) => setAiAnswer(e.target.value)} />
+                <button className="ghost-btn" disabled={aiBusy || action.busy || !aiAnswer.trim()} onClick={() => void answerQuestion(aiAnswer)}>
+                  Update estimate
+                </button>
+                <span className="small">Your note updates this estimate. Nothing is logged until you tap Add.</span>
+              </div>
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Meal</label>
-                <select className="text-in" value={aiMeal} onChange={(e) => setAiMeal(e.target.value as MealSlot)}>
+                <select aria-label="Meal" className="text-in" value={aiMeal} onChange={(e) => setAiMeal(e.target.value as MealSlot)}>
                   {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
                 </select>
               </div>
-              {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', margin: '0 0 8px' }}>{aiError}</span>}
-              <button className="big-btn" onClick={() => void addAllAi()} disabled={aiResult.items.length === 0 || aiBusy}>
+              <button className="big-btn" onClick={() => void action.run(addAllAi)} disabled={!aiValid || aiBusy || action.busy}>
                 Add {aiResult.items.length} item{aiResult.items.length === 1 ? '' : 's'} →
               </button>
               <div style={{ height: 8 }} />
-              <button className="ghost-btn" onClick={closeAi}>Back</button>
+              <button className="ghost-btn" disabled={aiBusy || action.busy} onClick={closeAi}>Back</button>
             </div>
           ) : showAdd ? (
             <div className="card">
               <div className="field">
                 <label style={ai.available ? { color: 'var(--lime)' } : undefined}>
-                  ✦ Describe it or snap it{ai.available ? '' : ' — offline'}
+                  ✦ Describe it or snap it
                 </label>
-                <textarea
-                  className="text-in" rows={2} style={{ resize: 'none', ...(ai.available ? {} : { opacity: 0.55 }) }}
+                <textarea aria-label="Describe your food"
+                  className="text-in" rows={3}
                   placeholder="2 eggs, toast with butter, café con leche"
-                  value={aiText} disabled={!ai.available || aiBusy}
+                  value={aiText} disabled={aiBusy}
                   onChange={(e) => setAiText(e.target.value)}
                 />
               </div>
-              {!ai.available && (
-                <button className="ai-hint" onClick={() => go({ name: 'settings' })}>
-                  {ai.configured
-                    ? '⚡ AI offline — connect to Tailscale, or check the endpoint in Settings ›'
-                    : '⚡ AI is off — set your endpoint in Settings to analyze text & photos ›'}
-                </button>
-              )}
+              <AiConnection ai={ai} onSettings={() => go({ name: 'settings' })} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   className={`ghost-btn${ai.available ? '' : ' soft-disabled'}`}
-                  disabled={aiBusy || (ai.available && !aiText.trim())}
-                  onClick={() => (ai.available ? void analyze() : go({ name: 'settings' }))}
+                  disabled={aiBusy || !ai.configured || !aiText.trim()}
+                  onClick={() => void analyze()}
                 >
                   {aiBusy ? 'Analyzing…' : 'Analyze with AI'}
                 </button>
                 <button
                   className={`ghost-btn${ai.available ? '' : ' soft-disabled'}`}
                   style={{ width: 'auto', padding: '0 16px' }} title="Photo of your food"
-                  disabled={aiBusy}
-                  onClick={() => (ai.available ? photoRef.current?.click() : go({ name: 'settings' }))}
+                  disabled={aiBusy || !ai.configured}
+                  onClick={() => photoRef.current?.click()}
                 >
-                  📷
+                  Photo
                 </button>
                 <input
                   ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }}
@@ -631,34 +575,34 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                   }}
                 />
               </div>
-              {aiError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>{aiError}</span>}
-              <div style={{ height: 14 }} />
+              <AiTaskStatus task={task} onRetry={() => retryRef.current()} />
+              <p className="section-label" style={{ marginTop: 24 }}>Or enter by hand</p>
               <div className="field">
                 <label>Food</label>
-                <input className="text-in" autoFocus value={form.name} placeholder="Chicken bowl"
+                <input aria-label="Food name" className="text-in" value={form.name} placeholder="Chicken bowl"
                   onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div className="in-grid">
                 <div className="field">
                   <label>Calories</label>
-                  <input className="text-in" inputMode="numeric" value={form.calories} placeholder="650"
+                  <input aria-label="Calories" className="text-in" inputMode="numeric" value={form.calories} placeholder="650"
                     onChange={(e) => setForm({ ...form, calories: e.target.value })} />
                 </div>
                 <div className="field">
                   <label>Protein (g)</label>
-                  <input className="text-in" inputMode="numeric" value={form.protein} placeholder="40"
+                  <input aria-label="Protein in grams" className="text-in" inputMode="numeric" value={form.protein} placeholder="40"
                     onChange={(e) => setForm({ ...form, protein: e.target.value })} />
                 </div>
               </div>
               <div className="in-grid">
                 <div className="field">
                   <label>Carbs (g) — optional</label>
-                  <input className="text-in" inputMode="numeric" value={form.carbs} placeholder="55"
+                  <input aria-label="Carbs in grams" className="text-in" inputMode="numeric" value={form.carbs} placeholder="55"
                     onChange={(e) => setForm({ ...form, carbs: e.target.value })} />
                 </div>
                 <div className="field">
                   <label>Fat (g) — optional</label>
-                  <input className="text-in" inputMode="numeric" value={form.fat} placeholder="20"
+                  <input aria-label="Fat in grams" className="text-in" inputMode="numeric" value={form.fat} placeholder="20"
                     onChange={(e) => setForm({ ...form, fat: e.target.value })} />
                 </div>
               </div>
@@ -667,7 +611,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               </span>
               <div className="field">
                 <label>Meal</label>
-                <select className="text-in" value={form.meal}
+                <select aria-label="Meal" className="text-in" value={form.meal}
                   onChange={(e) => setForm({ ...form, meal: e.target.value as MealSlot })}>
                   {slots.map((s) => <option key={s} value={s}>{slotLabel[s]}</option>)}
                 </select>
@@ -677,15 +621,41 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
                   onChange={(e) => setForm({ ...form, save: e.target.checked })} />
                 Save as a reusable meal
               </label>
-              <button className="big-btn" onClick={quickAdd} disabled={!form.name.trim() || !form.calories}>
-                Add →
+              <button className="big-btn" onClick={() => void action.run(quickAdd)} disabled={!manualValid || action.busy || aiBusy}>
+                {action.busy ? 'Saving…' : 'Add →'}
               </button>
+              <button className="text-button" disabled={aiBusy || action.busy} onClick={() => setShowAdd(false)}>Close — keep draft</button>
             </div>
           ) : (
             <button className="ghost-btn" onClick={() => setShowAdd(true)}>
               ＋ Quick add (name · kcal · macros)
             </button>
           )}
+          {grabbable.length > 0 && (
+            <>
+              <p className="section-label">Grab again — recent, same portion</p>
+              <div style={{ marginBottom: 10 }}>
+                {grabbable.map((e) => (
+                  <button key={e.id} type="button" className="chip btn" disabled={action.busy} onClick={() => void action.run(() => grab(e))}>
+                    {e.name} · {e.calories} kcal
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {saved.length > 0 && (
+            <>
+              <p className="section-label">Quick add — saved meals</p>
+              <div style={{ marginBottom: 10 }}>
+                {saved.map((m) => (
+                  <button key={m.id} type="button" className="chip green btn" disabled={action.busy} onClick={() => void action.run(() => addSaved(m))}>
+                    {m.emoji ? `${m.emoji} ` : ''}{m.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     </div>

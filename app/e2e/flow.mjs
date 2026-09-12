@@ -11,13 +11,14 @@ const exe = `${cache}/${shellDir}/chrome-headless-shell-mac-arm64/chrome-headles
 const browser = await chromium.launch({ executablePath: exe })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const errors = []
+let failedSteps = 0
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`) })
 page.on('dialog', (d) => d.accept())
 
 const step = async (name, fn) => {
   try { await fn(); console.log(`PASS ${name}`) }
-  catch (e) { console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await shot(name) }
+  catch (e) { failedSteps++; console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await shot(name) }
 }
 const shot = async (name) => page.screenshot({ path: `e2e/fail-${name.replace(/\W+/g, '-')}.png` })
 const readStore = (storeName) => page.evaluate((name) => new Promise((resolve, reject) => {
@@ -71,8 +72,8 @@ await step('log a set -> rest timer appears', async () => {
   await rows.first().locator('input').nth(1).fill('12')
   await rows.first().locator('.set-done-btn').click()
   await page.locator('.rest-toast').waitFor()
-  await page.getByText('Rest timer').waitFor()
-  await page.locator('.rest-toast .ghost-btn').click() // skip
+  await page.getByText('Rest', { exact: true }).waitFor()
+  await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click() // skip
 })
 
 await step('logged set shows done state and progress', async () => {
@@ -89,7 +90,7 @@ await step('delete a logged set (two-tap confirm), then re-log it', async () => 
   await rows.first().locator('input').nth(0).fill('270')
   await rows.first().locator('input').nth(1).fill('12')
   await rows.first().locator('.set-done-btn').click()
-  await page.locator('.rest-toast .ghost-btn').click()
+  await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click()
   await page.getByText('1/4 sets').waitFor()
 })
 
@@ -100,7 +101,7 @@ await step('switch exercise via pill', async () => {
   await rows.first().locator('input').nth(0).fill('120')
   await rows.first().locator('input').nth(1).fill('10')
   await rows.first().locator('.set-done-btn').click()
-  await page.locator('.rest-toast .ghost-btn').click()
+  await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click()
 })
 
 await step('scan screen: manual QR resolve -> known model', async () => {
@@ -216,7 +217,7 @@ await step('log Pec Fly from the shared machine', async () => {
   await row.locator('input').nth(0).fill('40')
   await row.locator('input').nth(1).fill('12')
   await row.locator('.set-done-btn').click()
-  await page.locator('.rest-toast .ghost-btn').click()
+  await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click()
 })
 
 await step('rescan and log Rear Delt Fly without duplicating the machine', async () => {
@@ -232,7 +233,7 @@ await step('rescan and log Rear Delt Fly without duplicating the machine', async
   await row.locator('input').nth(0).fill('30')
   await row.locator('input').nth(1).fill('12')
   await row.locator('.set-done-btn').click()
-  await page.locator('.rest-toast .ghost-btn').click()
+  await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click()
 
   const matches = (await readStore('machines')).filter((machine) => machine.qrUrl === dualQr)
   if (matches.length !== 1 || matches[0].id !== dualMachineId) throw new Error('rescan created or selected a different machine')
@@ -296,7 +297,7 @@ await step('routine builder: create, save, start, discard', async () => {
   await page.getByText('Add', { exact: true }).click()
   await page.getByText('1 exercise · 3 sets').waitFor()
   await page.locator('.big-btn', { hasText: 'Save routine' }).click()
-  await page.locator('.card.tappable', { hasText: 'Quick Push' }).click()
+  await page.getByRole('button', { name: /Quick Push.*exercises/ }).click()
   await page.locator('h1', { hasText: 'Chest Press' }).waitFor()
   await page.locator('.ghost-btn.danger', { hasText: 'Discard workout' }).click() // confirm auto-accepted
   await page.getByText('Choose routine').waitFor()
@@ -485,7 +486,7 @@ await step('ai: describe-it parses food into entries (mocked)', async () => {
 
 await step('ai: photo goes through the same review flow (mocked)', async () => {
   await page.getByText('＋ Quick add').click()
-  await page.setInputFiles('input[accept="image/*"]', 'e2e/final-home.png')
+  await page.setInputFiles('input[accept="image/*"]', { name: 'food.png', mimeType: 'image/png', buffer: await page.screenshot() })
   await page.getByText('AI estimate — review').waitFor()
   await page.locator('.big-btn', { hasText: 'Add 2 items' }).click()
   await page.getByText('180 kcal · 12P').first().waitFor()
@@ -502,7 +503,7 @@ await step('ai: new machine -> quick setup -> starter program (mocked)', async (
   await page.getByText('Save my machine').click()
   await page.getByText('Quick setup — sizes your program').waitFor() // no profile yet -> inline prompt
   await page.getByText('Get my program').click()
-  await page.getByText('Your starter program').waitFor()
+  await page.getByText('✦ Your starter program', { exact: true }).waitFor()
   await page.getByText('3×12').waitFor()
   await page.getByText('~90').waitFor()
   await page.getByText('Add 10 lb when you get all 3 sets of 12.').waitFor()
@@ -535,7 +536,7 @@ await step('ai: matching legacy machine-keyed program still loads', async () => 
   await page.locator('.tabbar .scan-key').click()
   await page.locator('.text-in').fill('https://example.com/gym/pec-fly-2')
   await page.getByText('Go', { exact: true }).click()
-  await page.getByText('Your starter program').waitFor()
+  await page.getByText('✦ Your starter program', { exact: true }).waitFor()
   await page.getByText('2×10').waitFor()
   await page.getByText('~55').waitFor()
 })
@@ -546,15 +547,15 @@ await step('ai: dual machine stores one program per exercise', async () => {
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('What are you training?').waitFor()
   await page.getByText('✦ Get my starter program').click()
-  await page.getByText('Your starter program').waitFor()
+  await page.getByText('✦ Your starter program', { exact: true }).waitFor()
   await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()
   await page.getByText('✦ Get my starter program').click()
-  await page.getByText('Your starter program').waitFor()
+  await page.getByText('✦ Your starter program', { exact: true }).waitFor()
 
   const programs = (await readStore('aiPrograms')).filter((program) => program.id.startsWith(`${dualMachineId}::`))
   const exerciseIds = new Set(programs.map((program) => program.exerciseId))
   if (programs.length !== 2 || !exerciseIds.has('ex-pec-fly') || !exerciseIds.has('ex-rear-delt-fly')) {
-    throw new Error('dual machine programs were not cached separately')
+    throw new Error(`dual machine programs were not cached separately: ${JSON.stringify(programs.map((p) => ({id:p.id, exerciseId:p.exerciseId})))}`)
   }
 })
 
@@ -596,3 +597,4 @@ await step('food db: barcode lookups hit the mirror first (mocked)', async () =>
 await page.screenshot({ path: 'e2e/final-home.png' })
 console.log(errors.length ? `PAGE ERRORS:\n${errors.join('\n')}` : 'NO PAGE ERRORS')
 await browser.close()
+if (failedSteps || errors.length) process.exitCode = 1

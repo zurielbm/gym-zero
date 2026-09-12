@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAction } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import { BarbellIcon, GearIcon } from '../components/icons'
 import { STRENGTH_CHECK_ROUTINE_ID } from '../data/seed'
@@ -35,6 +36,7 @@ function MacroBar({ label, value, target, unit, alt, water }: {
 
 export function HomeScreen() {
   const { api, go, settings, activeWorkout, setActiveWorkout, exercises } = useApp()
+  const action = useAction()
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
   const [waterOz, setWaterOz] = useState(0)
   const [trainedMin, setTrainedMin] = useState(0)
@@ -113,11 +115,11 @@ export function HomeScreen() {
               </span>
               <button
                 className="ghost-btn"
-                onClick={async () => {
+                disabled={action.busy} onClick={() => void action.run(async () => {
                   const w = await api.startWorkout(STRENGTH_CHECK_ROUTINE_ID)
                   setActiveWorkout(w)
                   go({ name: 'workout' })
-                }}
+                })}
               >
                 Start the strength check →
               </button>
@@ -125,7 +127,7 @@ export function HomeScreen() {
           )}
 
           {last && (
-            <div className="card tappable" style={{ marginTop: 14 }} onClick={() => go({ name: 'history' })}>
+            <button className="card tappable home-link" style={{ marginTop: 14 }} onClick={() => go({ name: 'history' })}>
               <div className="row">
                 <span className="lab">Last workout</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -147,10 +149,10 @@ export function HomeScreen() {
                   ))}
                 </div>
               )}
-            </div>
+            </button>
           )}
 
-          <div className="card tappable" style={{ marginTop: last ? 4 : 14 }} onClick={() => go({ name: 'food' })}>
+          <button className="card tappable home-link" style={{ marginTop: last ? 4 : 14 }} onClick={() => go({ name: 'food' })}>
             <div className="row">
               <b style={{ fontSize: '0.9rem' }}>Log food</b>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -159,7 +161,7 @@ export function HomeScreen() {
               </span>
             </div>
             <span className="small">Calories and macros in a couple of taps</span>
-          </div>
+          </button>
         </div>
       </div>
     </div>
