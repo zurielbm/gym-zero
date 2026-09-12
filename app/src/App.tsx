@@ -3,6 +3,7 @@ import api from './data'
 import type { Exercise, Settings, Workout } from './types'
 import { Ctx } from './AppContext'
 import type { Screen } from './AppContext'
+import { primeRestChime, playRestChime } from './lib/rest-chime'
 import { SYNC_APPLIED_EVENT } from './data/sync'
 import { useFeedback } from './components/Feedback'
 import { TabBar, TopNav } from './components/TabBar'
@@ -29,6 +30,8 @@ export default function App() {
   const [activeWorkout, setActiveWorkout] = useState<Workout | undefined>(undefined)
   const [restLeft, setRestLeft] = useState<number | null>(null)
   const [restTotal, setRestTotal] = useState(90)
+  const soundEnabled = useRef(true)
+  soundEnabled.current = settings?.restSoundEnabled !== false
   const restTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -42,6 +45,14 @@ export default function App() {
       },
     ).catch(() => { if (alive) setLoadError(true) })
     return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    const unlock = () => { if (soundEnabled.current) void primeRestChime() }
+    // Pointer/key events run before asynchronous set saving loses user activation.
+    document.addEventListener('pointerdown', unlock, { passive: true })
+    document.addEventListener('keydown', unlock)
+    return () => { document.removeEventListener('pointerdown', unlock); document.removeEventListener('keydown', unlock) }
   }, [])
 
   const stopRest = useCallback(() => {
@@ -58,9 +69,10 @@ export default function App() {
       setRestTotal(total)
       setRestLeft(total)
       restTimer.current = setInterval(() => {
-        const left = Math.round((endsAt - Date.now()) / 1000)
+        const left = Math.ceil((endsAt - Date.now()) / 1000)
         if (left <= 0) {
           stopRest()
+          if (soundEnabled.current) playRestChime()
           notify('Rest complete — ready for your next set')
           navigator.vibrate?.([100, 80, 100])
         }

@@ -18,6 +18,7 @@ const exercises: Exercise[] = [
   { id: 'ex-leg-press', name: 'Leg Press', muscleGroups: ['quads', 'glutes'], equipment: 'machine' },
   { id: 'ex-leg-extension', name: 'Leg Extension', muscleGroups: ['quads'], equipment: 'machine' },
   { id: 'ex-leg-curl', name: 'Leg Curl', muscleGroups: ['hamstrings'], equipment: 'machine' },
+  { id: 'ex-hip-adductor', name: 'Hip Adductor', muscleGroups: ['hips'], equipment: 'machine' },
   { id: 'ex-hip-abductor', name: 'Hip Abductor', muscleGroups: ['glutes', 'hips'], equipment: 'machine' },
   { id: 'ex-calf-raise', name: 'Calf Raise', muscleGroups: ['calves'], equipment: 'machine' },
   { id: 'ex-hack-squat', name: 'Hack Squat', muscleGroups: ['quads', 'glutes'], equipment: 'machine' },
@@ -175,6 +176,13 @@ export function ensureSeeded(): Promise<void> {
       } finally {
         syncFlags.seeding = false
       }
+    }
+    // Add the complementary movement on dual inner/outer-thigh stations to existing catalogs.
+    // Exercise deletion is not exposed; preserve any existing edited record.
+    if (!(await db.exercises.get('ex-hip-adductor'))) {
+      syncFlags.seeding = true
+      try { await db.exercises.put(exercises.find(exercise => exercise.id === 'ex-hip-adductor')!) }
+      finally { syncFlags.seeding = false }
     }
     if (!(await db.routines.get(strengthCheckRoutine.id))) {
       syncFlags.seeding = true

@@ -1,0 +1,4 @@
+document.querySelectorAll('[data-choice]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));document.querySelectorAll('[data-pane]').forEach(p=>p.hidden=p.dataset.pane!==button.dataset.choice);}));
+const zoom=document.querySelector('#zoom');let opener;
+document.querySelectorAll('.shot').forEach(b=>b.addEventListener('click',()=>{opener=b;document.querySelector('#zoom-label').textContent=b.dataset.label;const img=document.querySelector('#zoom-img');img.src=b.dataset.src;img.alt=b.dataset.label;zoom.showModal();zoom.scrollTop=0;document.body.style.overflow='hidden';}));
+document.querySelector('#close').addEventListener('click',()=>zoom.close());zoom.addEventListener('close',()=>{document.body.style.overflow='';opener?.focus({preventScroll:true});});

@@ -78,20 +78,20 @@ await step('log a set -> rest timer appears', async () => {
 
 await step('logged set shows done state and progress', async () => {
   await page.locator('.set-done-btn.done').first().waitFor()
-  await page.getByText('1/4 sets').waitFor()
+  await page.locator('.exercise-pill', { hasText: 'Leg Press' }).getByText('1/4 sets', { exact: true }).waitFor()
 })
 
 await step('delete a logged set (two-tap confirm), then re-log it', async () => {
   await page.locator('.set-done-btn.done').first().click() // arm
   await page.locator('.set-done-btn.del-armed').waitFor()
   await page.locator('.set-done-btn.del-armed').click() // confirm
-  await page.getByText('0/4 sets').waitFor()
+  await page.locator('.exercise-pill', { hasText: 'Leg Press' }).getByText('0/4 sets', { exact: true }).waitFor()
   const rows = page.locator('.set-row')
   await rows.first().locator('input').nth(0).fill('270')
   await rows.first().locator('input').nth(1).fill('12')
   await rows.first().locator('.set-done-btn').click()
   await page.locator('.rest-toast').getByRole('button', { name: 'Skip', exact: true }).click()
-  await page.getByText('1/4 sets').waitFor()
+  await page.locator('.exercise-pill', { hasText: 'Leg Press' }).getByText('1/4 sets', { exact: true }).waitFor()
 })
 
 await step('switch exercise via pill', async () => {
@@ -117,6 +117,7 @@ await step('scan screen: manual QR resolve -> known model', async () => {
 await step('map machine once -> machine screen with video + video thumb', async () => {
   await page.getByText('Save my machine').click()
   await page.getByText('My setup').waitFor()
+  await page.getByText('Machine instructions', { exact: true }).click()
   await page.locator('.video-thumb').waitFor()
   await page.getByText('Log Leg Press sets').waitFor()
 })
@@ -193,7 +194,7 @@ await step('map one physical machine to two exercises', async () => {
   await page.getByLabel('Add another exercise').selectOption({ label: 'Pec Fly' })
   await page.getByLabel('Add another exercise').selectOption({ label: 'Rear Delt Fly' })
   await page.getByText('Save my machine').click()
-  await page.getByText('What are you training?').waitFor()
+  await page.getByText('Choose an exercise').waitFor()
   await page.locator('.machine-movement', { hasText: 'Pec Fly' }).waitFor()
   await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).waitFor()
 
@@ -209,7 +210,7 @@ await step('log Pec Fly from the shared machine', async () => {
   await page.getByText('Log Pec Fly sets').click()
   await page.locator('h1', { hasText: 'Pec Fly' }).waitFor()
   await page.getByText('Dual fly station ▸').click()
-  await page.getByText('What are you training?').waitFor()
+  await page.getByText('Choose an exercise').waitFor()
   await page.locator('.machine-movement.current', { hasText: 'Pec Fly' }).waitFor()
   await page.getByText('‹ Workout').click()
   await page.locator('h1', { hasText: 'Pec Fly' }).waitFor()
@@ -224,7 +225,7 @@ await step('rescan and log Rear Delt Fly without duplicating the machine', async
   await page.locator('.tabbar .scan-key').click()
   await page.locator('.text-in').fill(dualQr)
   await page.getByText('Go', { exact: true }).click()
-  await page.getByText('What are you training?').waitFor()
+  await page.getByText('Choose an exercise').waitFor()
   await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()
   await page.getByText('Log Rear Delt Fly sets').click()
   await page.locator('h1', { hasText: 'Rear Delt Fly' }).waitFor()
@@ -545,7 +546,8 @@ await step('ai: dual machine stores one program per exercise', async () => {
   await page.locator('.tabbar .scan-key').click()
   await page.locator('.text-in').fill(dualQr)
   await page.getByText('Go', { exact: true }).click()
-  await page.getByText('What are you training?').waitFor()
+  await page.getByText('Choose an exercise').waitFor()
+  await page.locator('.machine-movement', { hasText: 'Pec Fly' }).click()
   await page.getByText('✦ Get my starter program').click()
   await page.getByText('✦ Your starter program', { exact: true }).waitFor()
   await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()

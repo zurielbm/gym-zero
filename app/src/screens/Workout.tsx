@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { SetEditor, EditedSetLabel } from '../components/SetEditor'
+import { MusclePreview } from '../components/MuscleMap'
 import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
@@ -12,6 +14,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
   const [routine, setRoutine] = useState<Routine | null>(null)
   const [sets, setSets] = useState<WorkoutSet[]>([])
+  const [editingSetId, setEditingSetId] = useState<string | null>(null)
   const [addedExercises, setAddedExercises] = useState<string[]>(() => Object.keys(workoutDrafts.get(activeWorkout?.id ?? '') ?? {}))
   const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId ?? workoutSelections.get(activeWorkout?.id ?? ''))
   const [selectedMachineId, setSelectedMachineId] = useState<string | undefined>(initialMachineId)
@@ -171,6 +174,14 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
     notify(`Set ${logged.length + 1} saved · ${weightLb} lb × ${reps}`)
   }
 
+  const saveSetEdit = async (values: Pick<WorkoutSet, 'weightLb' | 'reps'>, expected: WorkoutSet) => {
+    const updated = await api.updateSet(expected.id, values, expected)
+    setSets(old => old.map(set => set.id === updated.id ? updated : set))
+    setBaselines(new Map((await api.listBaselines()).map(baseline => [baseline.id, baseline])))
+    setEditingSetId(null)
+    notify(`Set ${updated.setNumber} updated · ${updated.weightLb} lb × ${updated.reps} reps`)
+  }
+
   const disarm = () => {
     if (disarmTimer.current) clearTimeout(disarmTimer.current)
     disarmTimer.current = null
@@ -194,6 +205,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const switchExercise = (id: string) => {
     setAddedExercises((old) => old.includes(id) ? old : [...old, id])
     setDrafts((old) => ({ ...old, [id]: old[id] ?? {} }))
+    setEditingSetId(null)
     setCurrentId(id)
     setProgram(undefined)
     disarm()
@@ -241,20 +253,22 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
             {currentMachine && (
               <>
                 {' · '}
-                <a style={{ cursor: 'pointer', textDecoration: 'none', fontWeight: 800 }}
+                <button className="text-button" style={{ fontWeight: 800 }}
                    onClick={() => go({ name: 'machine', machineId: currentMachine.id, exerciseId: currentId })}>
                   {currentMachine.nickname} ▸
-                </a>
+                </button>
               </>
             )}
           </p>
+
+          {currentId && exercises.get(currentId) && <MusclePreview exercise={exercises.get(currentId)!} />}
 
           {currentId && compatibleMachines.length > 1 && (
             <div className="field workout-machine-field">
               <label>Using machine</label>
               <select
                 className="text-in"
-                value={selectedMachineId ?? ''}
+                value={selectedMachineId ?? ''} disabled={editingSetId !== null}
                 onChange={(event) => { setSelectedMachineId(event.target.value || undefined); setProgram(undefined) }}
               >
                 <option value="">No machine selected</option>
@@ -274,8 +288,9 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                 const prevHint = perf?.sets[i]
                 if (done) {
                   return (
-                    <div className="set-row" key={i}>
-                      <b>{i + 1}</b>
+                    <div className="saved-set" key={done.id}>
+                    <div className="set-row">
+                      <b>{done.setNumber}</b>
                       <div>
                         <div className="logged-val">{done.weightLb}</div>
                         {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
@@ -284,10 +299,13 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                       <button
                         className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
                         title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
-                        disabled={action.busy} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
+                        disabled={action.busy || editingSetId !== null} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
                       >
                         {armedId === done.id ? '✕' : '✓'}
                       </button>
+                    </div>
+                    <div className="saved-set-actions"><EditedSetLabel set={done} /><button className="text-button" aria-label={`Edit set ${done.setNumber}`} disabled={action.busy || editingSetId !== null} onClick={() => { disarm(); setEditingSetId(done.id) }}>Edit set</button></div>
+                    {editingSetId === done.id && <SetEditor set={done} exerciseName={curName} onSave={saveSetEdit} onCancel={() => setEditingSetId(null)} />}
                     </div>
                   )
                 }
@@ -317,7 +335,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                       aria-label={`Set ${i + 1} reps`} disabled={action.busy} inputMode="numeric" value={d.r} placeholder="reps"
                       onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, r: e.target.value } } }))}
                     />
-                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={action.busy || !isNext || !d.w.trim() || !d.r.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0 || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
+                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={action.busy || editingSetId !== null || !isNext || !d.w.trim() || !d.r.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0 || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
                   </div>
                 )
               })}
@@ -327,7 +345,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
           {armedId && <p className="small" role="status">Tap the red × again to remove that set.</p>}
           {currentId && logged.length >= targetSets(currentId) && <div className="card">
             <p className="small lm" role="status">Target complete · {logged.length} sets saved</p>
-            {exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
+            {exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" disabled={editingSetId !== null} onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
           </div>}
           {perf && (
             <p className="lab" style={{ margin: '0 0 12px' }}>
@@ -340,7 +358,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         <div className="side">
           <p className="section-label" style={{ marginTop: 16 }}>Exercises</p>
           <div className="field">
-            <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={action.busy} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
+            <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={action.busy || editingSetId !== null} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
               <option value="">＋ Add an exercise…</option>
               {[...exercises.values()].filter((ex) => !exerciseIds.includes(ex.id)).map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
             </select>
@@ -351,7 +369,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
             const target = targetSets(id)
             return (
               <button
-                key={id} disabled={action.busy} aria-pressed={id === currentId}
+                key={id} disabled={action.busy || editingSetId !== null} aria-pressed={id === currentId}
                 className={`exercise-pill${id === currentId ? ' current' : ''}`}
                 onClick={() => switchExercise(id)}
               >
@@ -364,11 +382,11 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
           })}
 
           <div style={{ height: 14 }} />
-          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={action.busy || sets.length === 0}>
+          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={action.busy || editingSetId !== null || sets.length === 0}>
             Finish workout →
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" disabled={action.busy} onClick={() => void action.run(cancel)}>Discard workout</button>
+          <button className="ghost-btn danger" disabled={action.busy || editingSetId !== null} onClick={() => void action.run(cancel)}>Discard workout</button>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { MuscleMap, MusclePreview } from '../components/MuscleMap'
 import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { Routine } from '../types'
@@ -143,13 +144,14 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
                 <span className="lab">×</span>
                 <label className="small">Reps<input className="text-in" inputMode="numeric" placeholder="reps" title="Target reps (optional)" value={item.reps} onChange={(e) => patchItem(i, { reps: e.target.value })} /></label>
               </div>
+              {exercises.get(item.exerciseId) && <MusclePreview exercise={exercises.get(item.exerciseId)!} />}
             </div>
             <button className="icon-btn" title="Remove exercise" aria-label={`Remove ${exercises.get(item.exerciseId)?.name ?? 'exercise'}`} onClick={() => setItems((old) => old.filter((_, j) => j !== i))}>✕</button>
           </div>
         ))}
         {remaining.length > 0 && (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <select className="text-in" value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <select className="text-in" aria-label="Exercise to add to routine" value={addId} onChange={(e) => setAddId(e.target.value)}>
               <option value="">Add an exercise…</option>
               {remaining.map((ex) => (
                 <option key={ex.id} value={ex.id}>{ex.name}</option>
@@ -160,6 +162,7 @@ export function RoutineEditScreen({ routineId }: { routineId?: string }) {
             </button>
           </div>
         )}
+        {addId && exercises.get(addId) && <MuscleMap exercise={exercises.get(addId)!} />}
         <span className="small" style={{ display: 'block', marginTop: 8 }}>
           1–10 sets × 1–50 target reps per exercise. Leave reps blank to decide on the day.
         </span>

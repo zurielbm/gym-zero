@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { primeRestChime, playRestChime } from '../lib/rest-chime'
 import { useApp } from '../AppContext'
 import { Seg } from '../components/Seg'
 import { currentUser } from '../data/auth-store'
@@ -128,6 +129,23 @@ function TargetsCard() {
       </div>
     </div>
   )
+}
+
+function RestSoundCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
+  const enabled = settings.restSoundEnabled !== false
+  return <div className="card rest-sound-settings">
+    <span className="lab">Rest timer sound</span>
+    <p className="small">A soft, short chime when rest finishes. Plays once, with a gentle fade.</p>
+    <div className="rest-sound-actions">
+      <button className="ghost-btn" role="switch" aria-checked={enabled} aria-label="Rest completion sound" disabled={action.busy}
+        onClick={() => { if (!enabled) void primeRestChime(); void action.run(async () => { await api.patchSettings({ restSoundEnabled: !enabled }); await refreshSettings(); notify(enabled ? 'Rest sound off' : 'Rest sound on') }) }}>{enabled ? 'Sound on ✓' : 'Sound off'}</button>
+      <button className="ghost-btn" onClick={() => { void primeRestChime().then(ready => { if (!ready || !playRestChime()) notify('Sound is unavailable. Check your browser’s audio settings and try again.', { error: true }) }) }}>Preview chime</button>
+    </div>
+    <p className="small">Uses your device’s media volume. Keep the app open; sound may not play while the phone is locked or the browser is suspended.</p>
+  </div>
 }
 
 function TrainingProfileCard() {
@@ -568,6 +586,7 @@ export function SettingsScreen() {
       <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Settings<span className="dot">.</span></h1>
       <AccountCard />
       <TargetsCard />
+      <RestSoundCard />
       <AiCard />
       <FoodDbCard />
       <TrainingProfileCard />

@@ -1,0 +1,7 @@
+const input=document.querySelector('#demo-reps');let saved=10;
+const save=document.querySelector('#demo-save');const status=document.querySelector('#demo-status');
+function validate(){const n=Number(input.value);save.disabled=!input.value.trim()||!Number.isInteger(n)||n<=0||n===saved;}
+input.addEventListener('input',validate);
+save.addEventListener('click',()=>{validate();if(save.disabled)return;saved=Number(input.value);document.querySelector('#saved-reps').textContent=saved;document.querySelector('#edited-label').hidden=false;status.textContent=`Set updated to ${saved} reps. Original: 10 reps. No new set or rest timer.`;validate();});
+document.querySelector('#demo-reset').addEventListener('click',()=>{saved=10;input.value=14;document.querySelector('#saved-reps').textContent='10';document.querySelector('#edited-label').hidden=true;status.textContent='Originally logged as 10 reps.';validate();});
+const zoom=document.querySelector('#zoom');let opener;document.querySelectorAll('.shot').forEach(b=>b.addEventListener('click',()=>{opener=b;document.querySelector('#zoom-label').textContent=b.dataset.label;const img=document.querySelector('#zoom-img');img.src=b.dataset.src;img.alt=b.dataset.label;zoom.showModal();zoom.scrollTop=0;document.body.style.overflow='hidden';}));document.querySelector('#close').addEventListener('click',()=>zoom.close());zoom.addEventListener('close',()=>{document.body.style.overflow='';opener?.focus({preventScroll:true});});

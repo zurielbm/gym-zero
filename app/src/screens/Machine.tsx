@@ -3,6 +3,8 @@ import { AiConnection, AiTaskStatus } from '../components/AiStatus'
 import { useAiTask } from '../hooks/useAiTask'
 import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
+import { MuscleMap } from '../components/MuscleMap'
+import { exerciseMuscles } from '../lib/exercise-muscles'
 import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
@@ -16,17 +18,19 @@ interface ExercisePickerProps {
 }
 
 function ExercisePicker({ value, exercises, onChange }: ExercisePickerProps) {
+  const [previewId, setPreviewId] = useState('')
   const available = [...exercises.values()].filter((exercise) => !value.includes(exercise.id))
   return (
     <div className="machine-exercise-editor">
       {value.map((id) => (
-        <div className="machine-exercise-edit-row" key={id}>
+        <div key={id}><div className="machine-exercise-edit-row">
           <span>
             <b>{exercises.get(id)?.name ?? id}</b>
-            <small>{exercises.get(id)?.muscleGroups.join(' · ')}</small>
+            <small>{exercises.get(id) ? exerciseMuscles(exercises.get(id)!).focus : ''}</small>
+            <button className="text-button" aria-expanded={previewId === id} onClick={() => setPreviewId(previewId === id ? '' : id)}>{previewId === id ? 'Hide muscles' : 'Preview muscles'}</button>
           </span>
-          <button className="icon-btn" title={`Remove ${exercises.get(id)?.name ?? 'exercise'}`} onClick={() => onChange(value.filter((other) => other !== id))}>×</button>
-        </div>
+          <button className="icon-btn" title={`Remove ${exercises.get(id)?.name ?? 'exercise'}`} onClick={() => { onChange(value.filter((other) => other !== id)); if (previewId === id) setPreviewId('') }}>×</button>
+        </div>{previewId === id && exercises.get(id) && <MuscleMap exercise={exercises.get(id)!} />}</div>
       ))}
       {available.length > 0 && (
         <select
@@ -65,6 +69,10 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
   const [baseR, setBaseR] = useState('')
   const [baseSaved, setBaseSaved] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [routineName, setRoutineName] = useState('')
+  const [routineProgress, setRoutineProgress] = useState<Record<string, { done: number; target: number }>>({})
+  const nextInRoutine = Object.keys(routineProgress).find(id => machine && machineSupportsExercise(machine, id) && routineProgress[id]!.done < routineProgress[id]!.target) ?? ''
   // map-new-machine form and mapped-machine exercise editor
   const [nickname, setNickname] = useState('')
   const [draftExerciseIds, setDraftExerciseIds] = useState<string[]>([])
@@ -101,9 +109,19 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       } else if (modelId) {
         mo = await api.getEquipmentModel(modelId)
       }
+      const [routines, logged] = activeWorkout?.routineId
+        ? await Promise.all([api.listRoutines(), api.listSets(activeWorkout.id)])
+        : [[], []]
+      const routine = routines.find(row => row.id === activeWorkout?.routineId)
+      const progress = Object.fromEntries((routine?.items ?? []).map(item => [item.exerciseId, {
+        done: logged.filter(set => set.exerciseId === item.exerciseId).length, target: item.targetSets,
+      }]))
+      const next = routine?.items.find(item => m && machineSupportsExercise(m, item.exerciseId) && progress[item.exerciseId]!.done < item.targetSets)?.exerciseId
       const scannedUrl = qrUrl ?? m?.qrUrl
       const cached = scannedUrl ? await api.getMachineAiInfo(scannedUrl) : undefined
       if (!alive) return
+      setRoutineName(routine?.name ?? '')
+      setRoutineProgress(progress)
       setMachine(m ?? null)
       setModel(mo ?? null)
       setAiInfo(cached ?? null)
@@ -111,7 +129,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         const ids = machineExerciseIds(m)
         const selected = initialExerciseId && machineSupportsExercise(m, initialExerciseId)
           ? initialExerciseId
-          : ids[0] ?? ''
+          : next ?? (m.lastExerciseId && ids.includes(m.lastExerciseId) ? m.lastExerciseId : ids[0] ?? '')
         setSelectedExerciseId(selected)
         setEditExerciseIds(ids)
       } else if (mo) {
@@ -126,9 +144,9 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       }
       setLoaded(true)
     }
-    load()
+    void load().catch(() => { if (alive) setLoadError(true) })
     return () => { alive = false }
-  }, [api, exercises, initialExerciseId, machineId, modelId, qrUrl])
+  }, [api, exercises, initialExerciseId, machineId, modelId, qrUrl, activeWorkout?.id, activeWorkout?.routineId])
 
   useEffect(() => {
     if (!machine || !selectedExerciseId) return
@@ -155,6 +173,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
     return () => { alive = false }
   }, [activeWorkout?.id, api, machine?.id, selectedExerciseId])
 
+  if (loadError) return <div className="page"><p role="alert">Could not load this machine.</p><button className="ghost-btn" onClick={() => go({ name: 'scan' })}>Back to Scanner</button></div>
   if (!loaded) return <div className="page"><p className="small" role="status">Loading your machine…</p></div>
 
   const videoUrl = model?.videoUrl ?? machine?.qrUrl ?? qrUrl
@@ -249,11 +268,10 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       await api.saveMachine(m)
       notify('Machine saved')
       setMachine(m)
-      setSelectedExerciseId(m.exerciseId)
+      setSelectedExerciseId(Object.keys(routineProgress).find(id => machineSupportsExercise(m, id) && routineProgress[id]!.done < routineProgress[id]!.target) ?? m.exerciseId)
       setEditExerciseIds(machineExerciseIds(m))
-      // profile already known → build the starter program right away; otherwise
-      // the mapped view shows the one-time quick-setup prompt first
-      if (aiAvail.available && hasProfile) void generateProgram(m, m.exerciseId)
+      // Auto-build only for a single movement; multi-use stations need a choice first.
+      if (aiAvail.available && hasProfile && machineExerciseIds(m).length === 1) void generateProgram(m, m.exerciseId)
     }
     return (
       <div className="page">
@@ -301,10 +319,9 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
     ? selectedExerciseId
     : supportedExerciseIds[0] ?? machine.exerciseId
   const ex = exercises.get(currentExerciseId)
-  const patch = async (p: Partial<GymMachine>) => {
-    const next = normalizeMachineExercises({ ...machine, ...p })
-    setMachine(next)
-    await api.saveMachine(next)
+  const patch = (p: Partial<GymMachine>) => {
+    setMachine(current => current ? normalizeMachineExercises({ ...current, ...p }) : current)
+    void api.patchMachine(machine.id, p).catch(() => notify('Could not save your machine changes. Please try again.', { error: true }))
   }
 
   const selectExercise = (id: string) => {
@@ -316,6 +333,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
     setBaseW('')
     setBaseR('')
     setBaseSaved(false)
+    setProgramFeedback('')
     programTask.clear()
   }
 
@@ -326,14 +344,16 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       exerciseId: editExerciseIds.includes(machine.exerciseId) ? machine.exerciseId : editExerciseIds[0]!,
       exerciseIds: editExerciseIds,
     })
+    await api.patchMachine(machine.id, { exerciseId: next.exerciseId, exerciseIds: next.exerciseIds })
     setMachine(next)
     if (!machineSupportsExercise(next, currentExerciseId)) selectExercise(next.exerciseId)
     setEditExerciseIds(machineExerciseIds(next))
     setEditingExercises(false)
-    await api.saveMachine(next)
+    notify('Exercises saved — past sets and programs are kept')
   }
 
   const logSets = async () => {
+    await api.patchMachine(machine.id, { lastExerciseId: currentExerciseId })
     if (!activeWorkout) {
       const w = await api.startWorkout()
       setActiveWorkout(w)
@@ -368,12 +388,10 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
           : supportedExerciseIds.map((id) => exercises.get(id)?.name).filter(Boolean).join(' · ')}
       </p>
 
-      <VideoPlayer url={videoUrl} />
-
       {supportedExerciseIds.length > 1 && !editingExercises && (
         <div className="machine-movement-picker">
           <div className="row" style={{ marginBottom: 8 }}>
-            <span className="lab lm">What are you training?</span>
+            <span className="lab lm">Choose an exercise</span>
             <button
               className="back-link"
               style={{ margin: 0 }}
@@ -383,17 +401,25 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
               Edit exercises
             </button>
           </div>
+          <p className="small machine-choice-help">One station, {supportedExerciseIds.length} movements. Tap to compare the muscles and movement.</p>
+          {nextInRoutine ? <p className="machine-routine-hint">Next here in {routineName}: <b>{exercises.get(nextInRoutine)?.name}</b>. Other movements are optional.</p>
+            : <p className="small machine-choice-help">{routineName ? 'No unfinished targets here in your current routine. ' : ''}Choose the muscle group you want to train. You do not need to do every movement.</p>}
           {supportedExerciseIds.map((id) => {
             const exercise = exercises.get(id)
             return (
               <button
                 key={id}
                 className={`machine-movement${id === currentExerciseId ? ' current' : ''}`}
-                disabled={progBusy}
+                disabled={progBusy || action.busy}
+                aria-pressed={id === currentExerciseId}
                 onClick={() => selectExercise(id)}
               >
-                <b>{exercise?.name ?? id}</b>
-                <span>{exercise?.muscleGroups.join(' · ')}</span>
+                <span className="machine-choice-copy"><b>{exercise?.name ?? id}</b>
+                  <small>{exercise ? exerciseMuscles(exercise).focus : ''}</small>
+                  {routineProgress[id] && <small className="routine-tag">{id === nextInRoutine ? 'Next here' : routineProgress[id]!.done >= routineProgress[id]!.target ? 'Target met' : 'In your routine'} · {routineProgress[id]!.done}/{routineProgress[id]!.target} sets</small>}
+                  {machine.lastExerciseId === id && <small>Last used on this station</small>}
+                </span>
+                <span className="movement-check" aria-hidden="true">{id === currentExerciseId ? '✓' : '○'}</span>
               </button>
             )
           })}
@@ -408,8 +434,8 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
           </span>
           <ExercisePicker value={editExerciseIds} exercises={exercises} onChange={setEditExerciseIds} />
           <div className="machine-edit-actions">
-            <button className="ghost-btn" onClick={() => { setEditExerciseIds(supportedExerciseIds); setEditingExercises(false) }}>Cancel</button>
-            <button className="big-btn" disabled={editExerciseIds.length === 0} onClick={() => void saveExercises()}>Save exercises</button>
+            <button className="ghost-btn" disabled={action.busy} onClick={() => { setEditExerciseIds(supportedExerciseIds); setEditingExercises(false) }}>Cancel</button>
+            <button className="big-btn" disabled={action.busy || editExerciseIds.length === 0} onClick={() => void action.run(saveExercises)}>Save exercises</button>
           </div>
         </div>
       )}
@@ -421,6 +447,16 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         {ex && <span className="chip blue" style={{ textTransform: 'capitalize' }}>{ex.equipment}</span>}
       </div>
 
+      {ex && <MuscleMap exercise={ex} />}
+      <div className="machine-log-action">
+        <button className="big-btn" disabled={action.busy || editingExercises} onClick={() => void action.run(logSets)}>Log {ex?.name ?? 'exercise'} sets →</button>
+        <p className="small">Previewing does not log a set. Your choice is remembered when you open it for logging.</p>
+        <details className="machine-save-explainer"><summary>How this is saved</summary>
+          <p className="small">One saved station keeps all its exercises. Each set records the chosen exercise and this station; starter programs are separate for each pair. Your routine takes priority when you return, otherwise the last used exercise opens.</p>
+          <p className="small">Machine setup notes below are shared across its exercises. Previous performance and strength baselines are grouped by exercise, including other stations. Saved records stay on this device and use account sync when configured.</p>
+        </details>
+      </div>
+      {videoUrl && <details className="machine-instructions"><summary>Machine instructions</summary><VideoPlayer url={videoUrl} /></details>}
       {aiGuide}
       {identification}
       {!identification && <AiConnection ai={aiAvail} onSettings={() => go({ name: 'settings' })} />}
@@ -591,7 +627,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       {perf && (
         <div className="card">
           <div className="row">
-            <span className="lab">Your numbers here</span>
+            <span className="lab">Previous {ex?.name ?? 'exercise'} sets</span>
             <span className="lab">{perf.workoutDate.slice(5).replace('-', '.')}</span>
           </div>
           <div style={{ display: 'flex', gap: 22, marginTop: 8, flexWrap: 'wrap' }}>
@@ -605,7 +641,6 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         </div>
       )}
 
-      <button className="big-btn" disabled={action.busy} onClick={() => void action.run(logSets)}>Log {ex?.name ?? 'exercise'} sets →</button>
     </div>
   )
 }

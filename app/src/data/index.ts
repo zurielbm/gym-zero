@@ -32,6 +32,17 @@ export const api: DataAPI = {
   async listMachines() { await ready(); return (await db.machines.toArray()).map(publicMachine) },
   async getMachine(id) { await ready(); const machine = await db.machines.get(id); return machine && publicMachine(machine) },
   async saveMachine(machine) { await ready(); const normalized = normalizeMachineExercises(machine); const qrKey = normalized.qrUrl ? normalizeQrUrl(normalized.qrUrl) : undefined; await db.machines.put({ ...normalized, ...(qrKey ? { qrKey } : {}) }) },
+  async patchMachine(id, patch) {
+    await ready()
+    return db.transaction('rw', db.machines, async () => {
+      const current = await db.machines.get(id)
+      if (!current) throw new Error('This machine is no longer available.')
+      const next = normalizeMachineExercises({ ...current, ...patch, id })
+      const qrKey = next.qrUrl ? normalizeQrUrl(next.qrUrl) : undefined
+      await db.machines.put({ ...next, qrKey })
+      return publicMachine(next)
+    })
+  },
   async resolveQr(url) { await ready(); const key = normalizeQrUrl(url); const [machine, model] = await Promise.all([db.machines.where('qrKey').equals(key).first(), db.equipmentModels.where('qrKeys').equals(key).first()]); const result: QrResolution = {}; if (machine) result.machine = publicMachine(machine); if (model) result.model = publicModel(model); return result },
   async getEquipmentModel(id) { await ready(); const model = await db.equipmentModels.get(id); return model && publicModel(model) },
   async getMachineAiInfo(qrUrl) { await ready(); return db.machineAi.get(normalizeQrUrl(qrUrl)) },
@@ -59,6 +70,37 @@ export const api: DataAPI = {
       }
     }
     return full
+  },
+  async updateSet(id, values, expected) {
+    await ready()
+    if (!Number.isFinite(values.weightLb) || values.weightLb < 0 || !Number.isInteger(values.reps) || values.reps <= 0) {
+      throw new Error('Enter a weight of 0 or more and a whole-number rep count above 0.')
+    }
+    return db.transaction('rw', db.sets, db.baselines, async () => {
+      const current = await db.sets.get(id)
+      if (!current) throw new Error('This set was removed. Reopen the workout to refresh it.')
+      if (current.weightLb === values.weightLb && current.reps === values.reps) return current
+      if (expected && (current.weightLb !== expected.weightLb || current.reps !== expected.reps || current.editedAt !== expected.editedAt)) {
+        throw new Error('This set changed elsewhere. Reload the workout before editing again.')
+      }
+      const updated: WorkoutSet = {
+        ...current, weightLb: values.weightLb, reps: values.reps, editedAt: Date.now(),
+        originalValues: current.originalValues ?? { weightLb: current.weightLb, reps: current.reps },
+      }
+      const baseline = await db.baselines.get(current.exerciseId)
+      await db.sets.put(updated)
+      const suppliedBaseline = baseline && baseline.at === current.loggedAt && baseline.weightLb === current.weightLb && baseline.reps === current.reps
+      if (suppliedBaseline) {
+        // A correction must not leave a strength suggestion inflated by the old numbers.
+        const candidates = (await db.sets.where('exerciseId').equals(current.exerciseId).toArray()).filter(set => set.weightLb > 0 && set.reps > 0)
+        const best = candidates.sort((a, b) => epleyMaxLb(b.weightLb, b.reps) - epleyMaxLb(a.weightLb, a.reps))[0]
+        if (best) await db.baselines.put({ id: current.exerciseId, weightLb: best.weightLb, reps: best.reps, at: best.loggedAt })
+        else await db.baselines.delete(current.exerciseId)
+      } else if (baseline && epleyMaxLb(updated.weightLb, updated.reps) > epleyMaxLb(baseline.weightLb, baseline.reps)) {
+        await db.baselines.put({ id: current.exerciseId, weightLb: updated.weightLb, reps: updated.reps, at: updated.loggedAt })
+      }
+      return updated
+    })
   },
   async deleteSet(id) {
     await ready()

@@ -325,6 +325,7 @@ export function HistoryScreen() {
                 ))}
               </span>
               {s.workout.notes && <span className="small" style={{ display: 'block', marginTop: 4 }}>“{s.workout.notes}”</span>}
+              <button className="ghost-btn" style={{ marginTop: 12 }} aria-label={`Review workout from ${s.workout.date}`} onClick={() => go({ name: 'summary', workoutId: s.workout.id })}>Review / edit sets →</button>
             </div>
           ))}
           {recent.length === 0 && (

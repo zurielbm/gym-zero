@@ -572,3 +572,75 @@ input[type="checkbox"] { font-size: 16px; width: 20px; height: 20px; accent-colo
 .routine-open { width: 100%; background: transparent; border: 0; padding: 0 48px 0 0; color: var(--ink); text-align: left; cursor: pointer; }
 .routine-edit { position: absolute; top: 14px; right: 0; }
 .home-link { display: block; width: 100%; text-align: left; color: var(--ink); }
+
+/* Exercise choice and offline muscle-group diagrams. */
+.muscle-map { margin: 12px 0; padding: 16px; border: 1px solid var(--edge); background: var(--surface); }
+.muscle-map-heading { display: flex; flex-direction: column; gap: 5px; }
+.muscle-map-heading b { font-size: 1rem; }
+.muscle-figures { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 14px auto 12px; max-width: 330px; }
+.muscle-figures figure { margin: 0; min-width: 0; text-align: center; }
+.muscle-figures svg { width: 100%; height: 230px; display: block; }
+.muscle-figures figcaption { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 7px; }
+.anatomy-outline { fill: #202328; stroke: #687079; stroke-width: 1.1; }
+.anatomy-detail { fill: none; stroke: #657079; stroke-width: 1; opacity: 0.65; }
+.muscle-region { fill: #353b43; stroke: #181b1f; stroke-width: 1; stroke-linejoin: round; transition: fill 160ms ease; }
+.muscle-region.primary { fill: var(--lime); }
+.muscle-region.secondary { fill: #70b5c3; }
+.muscle-legend { margin: 0; display: grid; gap: 10px; border-top: 1px solid var(--edge); padding-top: 12px; }
+.muscle-legend > div { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: baseline; }
+.muscle-legend dt { font-size: 0.68rem; color: var(--muted); }
+.muscle-legend dd { margin: 0; font-size: 0.78rem; line-height: 1.5; }
+.muscle-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; }
+.muscle-legend i.primary { background: var(--lime); }
+.muscle-legend i.secondary { background: #70b5c3; }
+.muscle-movement { font-size: 0.8rem; line-height: 1.6; margin: 12px 0 0; }
+.muscle-map-note { font-size: 0.66rem; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
+.muscle-preview { margin: 0 0 12px; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); }
+.muscle-preview > summary, .machine-instructions > summary, .machine-save-explainer > summary { padding: 12px 4px; min-height: 44px; cursor: pointer; font-size: 0.78rem; font-weight: 700; }
+.muscle-preview > summary::marker, .machine-instructions > summary::marker, .machine-save-explainer > summary::marker { color: var(--lime); }
+.muscle-preview .muscle-map { margin: 0 0 10px; }
+.machine-choice-help { margin: 8px 0; }
+.machine-routine-hint { border-left: 2px solid var(--lime); padding: 8px 10px; margin: 10px 0; font-size: 0.75rem; line-height: 1.6; background: var(--surface); }
+.machine-movement .machine-choice-copy { flex: 1; min-width: 0; text-transform: none; }
+.machine-choice-copy b, .machine-choice-copy small { display: block; }
+.machine-choice-copy small { font-size: 0.7rem; line-height: 1.5; margin-top: 4px; }
+.machine-choice-copy .routine-tag { color: var(--lime); }
+.machine-movement .movement-check { flex-shrink: 0; font-size: 1.1rem; color: var(--muted); }
+.machine-movement.current .movement-check { color: var(--lime); }
+.machine-log-action { margin: 14px 0 18px; }
+.machine-log-action > p { margin: 8px 0; }
+.machine-instructions { border-block: 1px solid var(--edge); margin-bottom: 14px; }
+.machine-save-explainer { margin-top: 4px; }
+.routine-item .muscle-preview { margin-top: 10px; }
+.routine-item .muscle-map { padding: 10px; }
+.routine-item:has(.muscle-preview[open]) .muscle-preview { grid-column: 1 / -1; }
+.routine-item .muscle-figures { gap: 8px; }
+.routine-item .muscle-figures svg { height: 190px; }
+.machine-exercise-edit-row .text-button { display: block; text-transform: none; }
+@media (max-width: 360px) {
+  .muscle-map { padding: 12px; }
+  .muscle-figures { gap: 10px; }
+  .muscle-figures svg { height: 210px; }
+  .muscle-legend > div { grid-template-columns: 74px 1fr; gap: 6px; }
+}
+
+/* Saved-set corrections remain distinct from logging another set. */
+.saved-set-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin: -3px 0 4px; }
+.edited-set-label { display: inline-block; color: #a9c6d0; border: 1px solid #445860; background: #172126; padding: 2px 7px; font-size: 0.65rem; line-height: 1.5; letter-spacing: 0.03em; }
+.saved-set-actions .edited-set-label { margin-right: auto; }
+.set-editor { border: 1px solid var(--lime); background: var(--surface); padding: 14px; margin: 8px 0 14px; }
+.set-editor > b { font-size: 0.85rem; }
+.set-editor > .small { margin: 8px 0 12px; }
+.set-editor .field { margin: 0; }
+.set-edit-actions, .rest-sound-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.set-edit-actions .big-btn, .set-edit-actions .ghost-btn { margin: 0; }
+.summary-exercise-name { font-size: 0.9rem; margin: 0 0 12px; }
+.summary-set { padding: 12px 0; border-top: 1px solid var(--edge); }
+.summary-set:last-child { padding-bottom: 0; }
+.summary-set-values { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.summary-set-values b { font-size: 0.85rem; }
+.summary-set > .small { margin: 6px 0 0; }
+.summary-set > .text-button { display: block; margin-left: auto; }
+.rest-sound-settings > .small { margin: 8px 0 12px; }
+
+.set-edit-actions .big-btn, .set-edit-actions .ghost-btn { font-size: 0.75rem; padding: 12px 8px; letter-spacing: 0.04em; min-height: 44px; }
