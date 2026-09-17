@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
-import { aiConfig, identifyExercisePhoto, useAiAvailable, type AiExercisePhotoResult } from '../lib/ai'
+import { aiConfig, identifyExercisePhoto, identifyExerciseDescription, useAiAvailable, type AiExercisePhotoResult } from '../lib/ai'
+import { Seg } from './Seg'
 import { downscalePhoto } from '../lib/image'
 import type { Exercise } from '../types'
 
@@ -18,6 +19,8 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
   const { api, go, settings, exercises, activeWorkout, setActiveWorkout } = useApp()
   const ai = useAiAvailable(settings)
   const [photo, setPhoto] = useState<string | null>(null)
+  const [mode, setMode] = useState<'photo' | 'describe'>('photo')
+  const [description, setDescription] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [logging, setLogging] = useState(false)
@@ -92,7 +95,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
 
   const identify = async () => {
     const config = aiConfig(settings)
-    if (!config || !photo || operation.current || logLock.current) return
+    if (!config || (mode === 'photo' ? !photo : !description.trim()) || operation.current || logLock.current) return
     operation.current = true
     const ticket = gen.current += 1
     setBusy(true)
@@ -100,7 +103,9 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
     setResult(null)
     setChosenId('')
     try {
-      const identified = await identifyExercisePhoto(config, photo, catalog, note.trim() || undefined)
+      const identified = mode === 'describe'
+        ? await identifyExerciseDescription(config, description, catalog)
+        : await identifyExercisePhoto(config, photo!, catalog, note.trim() || undefined)
       if (!alive.current || ticket !== gen.current) return
       setResult(identified)
     } catch (err) {
@@ -146,17 +151,34 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
     <div className="card">
       <div className="row">
         <span className="lab lm">✦ Identify an exercise</span>
-        {photo && (
+        {mode === 'photo' && photo && (
           <button className="back-link" style={{ margin: 0 }} disabled={busy || logging} onClick={retake}>
             Retake
           </button>
         )}
       </div>
+      <Seg options={[{ v: 'photo', label: 'Photo' }, { v: 'describe', label: 'Describe it' }]}
+        value={mode} onPick={(next) => {
+          if (operation.current || logLock.current) return
+          gen.current += 1
+          setMode(next)
+          clearResult()
+        }} />
       <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
-        Photograph an exercise or the whole machine. Tap Identify to send the photo to your AI service. This app does not save the photo.
+        {mode === 'describe'
+          ? 'Describe your position, the equipment, and how you move. AI suggests possible exercises for you to choose.'
+          : 'Photograph an exercise or the whole machine. Tap Identify to send the photo to your AI service. This app does not save the photo.'}
       </span>
 
-      {photo ? (
+      {mode === 'describe' ? (
+        <div className="field">
+          <label htmlFor="exercise-description">Describe the exercise or workout movement</label>
+          <textarea id="exercise-description" className="text-in" rows={4} maxLength={1000}
+            style={{ resize: 'vertical', width: '100%' }} value={description} disabled={busy || logging}
+            placeholder="I sit on a bench and pull a cable handle toward my stomach, keeping my elbows close."
+            onChange={(e) => { setDescription(e.target.value); clearResult() }} />
+        </div>
+      ) : photo ? (
         <img
           src={photo}
           alt="Exercise or equipment photo to identify"
@@ -196,9 +218,9 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         }}
       />
 
-      {photo && !result && (
+      {(mode === 'describe' || photo) && !result && (
         <>
-          <div className="field">
+          {mode === 'photo' && <div className="field">
             <label htmlFor="exercise-photo-note">Anything to add? — optional</label>
             <input
               id="exercise-photo-note" className="text-in" value={note} disabled={busy} maxLength={1000}
@@ -206,13 +228,13 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
               onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && ai.available) void identify() }}
             />
-          </div>
+          </div>}
           <button
             className={`big-btn${disabled ? ' soft-disabled' : ''}`}
-            disabled={busy}
+            disabled={busy || (mode === 'describe' && !description.trim())}
             onClick={() => (ai.available ? void identify() : openSettings())}
           >
-            {busy ? 'Looking at it…' : 'Identify exercise →'}
+            {busy ? 'Finding matches…' : mode === 'describe' ? 'Find possible exercises →' : 'Identify exercise →'}
           </button>
         </>
       )}
@@ -221,18 +243,18 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         <button className="ai-hint" onClick={openSettings}>
           {ai.configured
             ? '⚡ AI offline — connect to Tailscale, or check the endpoint in Settings ›'
-            : '⚡ AI is off — set your endpoint in Settings to identify machines from photos ›'}
+            : '⚡ AI is off — set your endpoint in Settings to identify exercises ›'}
         </button>
       )}
 
       <span className="small" role="status" aria-live="polite" style={{ display: busy ? 'block' : 'none', marginTop: 8 }}>
-        Reading the photo…
+        {mode === 'describe' ? 'Reading your description…' : 'Reading the photo…'}
       </span>
 
       {error && (
         <div style={{ marginTop: 10 }}>
           <span className="small" role="alert" style={{ color: 'var(--danger)', display: 'block' }}>{error}</span>
-          {photo && (
+          {(mode === 'describe' ? !!description.trim() : !!photo) && (
             <button className="ghost-btn" style={{ width: 'auto', padding: '8px 14px', marginTop: 8 }} disabled={busy}
               onClick={() => (ai.available ? void identify() : openSettings())}>
               Try again
@@ -264,7 +286,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
           )}
 
           {matches.length > 0 ? (
-            <div style={{ marginTop: 12 }} role="group" aria-label="Exercises that match the photo">
+            <div style={{ marginTop: 12 }} role="group" aria-label="Possible exercise matches">
               <span className="lab" style={{ display: 'block', marginBottom: 8 }}>
                 {matches.length === 1 ? 'Is this what you are doing?' : 'Which one are you doing?'}
               </span>
@@ -325,7 +347,9 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
             {logging ? 'Starting…' : 'Log exercise →'}
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn" disabled={logging || busy} onClick={retake}>Retake photo</button>
+          <button className="ghost-btn" disabled={logging || busy} onClick={retake}>
+            {mode === 'describe' ? 'Refine description' : 'Retake photo'}
+          </button>
         </div>
       )}
     </div>

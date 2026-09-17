@@ -49,6 +49,11 @@ AI to identify the exercise or equipment. Review the confidence and suggested
 movements, select the exercise, and log it in your workout. If no catalog
 match is found, choose an exercise manually or try a clearer photo.
 
+For text-only identification, choose **Describe it**, describe the equipment,
+your position and movement, then tap **Find possible exercises**. AI offers
+likely catalog matches, explains uncertainty, and lets you choose one to log.
+You can edit the description and try again; a photo is not required.
+
 This uses the same AI settings and requires a model that accepts images.
 Photos are resized on the device and sent to the configured proxy only when
 you request identification; the app does not save the photo. A still image may
