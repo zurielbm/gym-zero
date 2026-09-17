@@ -4,6 +4,7 @@ import { createScanDetector } from '../lib/barcode'
 import { isFoodBarcode, lookupBarcode } from '../lib/food-sources'
 import type { FoodProduct, QrResolution } from '../types'
 import { machineExerciseIds } from '../types'
+import { ExercisePhoto } from '../components/ExercisePhoto'
 
 type Found =
   | { kind: 'machine'; url: string; res: QrResolution }
@@ -113,6 +114,21 @@ export function ScanScreen() {
     open({ kind: 'machine', url: value, res: await api.resolveQr(value) })
   }
 
+  const capturePhoto = () => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+      throw new Error('Camera is not ready. Try taking or uploading a photo instead.')
+    }
+    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not capture a photo on this device.')
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', 0.8)
+  }
+
   const foodCard = (f: Found & { kind: 'food' }) => {
     const badge = f.state === 'loading' ? '…' : f.state === 'error' ? '!' : f.product ? '✓' : '?'
     const title = f.state === 'loading' ? 'Looking it up…'
@@ -147,7 +163,7 @@ export function ScanScreen() {
       </button>
       <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan<span className="dot">.</span></h1>
       <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-        Point at a machine QR or a food barcode
+        Scan a code or identify an exercise from a photo
       </p>
 
       <div className="viewfinder">
@@ -183,6 +199,7 @@ export function ScanScreen() {
           Camera unavailable — type the QR link or barcode digits instead.
         </p>
       )}
+      <ExercisePhoto capturePhoto={cameraOn ? capturePhoto : undefined} />
       <div className="field">
         <label>Or enter a QR link / barcode digits</label>
         <div style={{ display: 'flex', gap: 8 }}>
