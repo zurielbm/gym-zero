@@ -264,6 +264,16 @@ export function HistoryScreen() {
             </div>
           )}
 
+          {week && <div className="card">
+            <span className="lab">Cardio time · 6 wk</span>
+            <div className="spark" role="img" aria-label={`Weekly cardio minutes: ${week.weeklyCardioMinutes.map((m) => Math.round(m)).join(', ')}`}>
+              {week.weeklyCardioMinutes.map((minutes, i) => <i key={i} className={i === 5 ? 'hi' : ''}
+                title={`${Number(minutes.toFixed(1))} cardio min`}
+                style={{ height: `${Math.max(2, minutes / Math.max(1, ...week.weeklyCardioMinutes) * 100)}%` }} />)}
+            </div>
+            <p className="small">{Number((week.weeklyCardioMinutes.at(-1) ?? 0).toFixed(1))} cardio min this week</p>
+          </div>}
+
           <div className="card">
             <div className="row">
               <div>
@@ -316,8 +326,10 @@ export function HistoryScreen() {
                 </span>
                 <span className="lab">{Math.max(1, Math.round(s.durationSec / 60))} min</span>
               </div>
+              <button className="back-link" style={{ marginTop: 8 }} onClick={() => go({ name: 'summary', workoutId: s.workout.id })}>View workout →</button>
               <span className="small">
                 {s.setCount} set{s.setCount === 1 ? '' : 's'} · {Math.round(s.totalVolumeLb).toLocaleString()} lb
+                {s.activityCount > 0 && <> · {Number((s.timedDurationSec / 60).toFixed(1))} min timed activity · {Number(s.distanceMiles.toFixed(2))} mi</>}
                 {s.prs.map((pr) => (
                   <span key={pr.exerciseId} className="pr-flag">
                     {exercises.get(pr.exerciseId)?.name ?? ''} PR {pr.weightLb}×{pr.reps}

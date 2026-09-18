@@ -31,6 +31,15 @@ const exercises: Exercise[] = [
   { id: 'ex-ab-crunch-machine', name: 'Ab Crunch Machine', muscleGroups: ['core'], equipment: 'machine' },
 ]
 
+const cardioExercises: Exercise[] = [
+  { id: 'ex-elliptical', name: 'Elliptical Trainer', aliases: ['Elliptical', 'Cross trainer', 'Elliptical cross trainer'], muscleGroups: ['quads', 'glutes', 'calves'], equipment: 'machine' },
+  { id: 'ex-treadmill-walk', name: 'Treadmill Walk', aliases: ['Treadmill walking'], muscleGroups: ['quads', 'glutes', 'calves'], equipment: 'machine' },
+  { id: 'ex-treadmill-run', name: 'Treadmill Run', aliases: ['Treadmill running'], muscleGroups: ['quads', 'hamstrings', 'glutes', 'calves'], equipment: 'machine' },
+  { id: 'ex-stationary-bike', name: 'Stationary Bike', aliases: ['Exercise bike', 'Indoor cycling'], muscleGroups: ['quads', 'glutes'], equipment: 'machine' },
+  { id: 'ex-rowing-machine', name: 'Rowing Machine', aliases: ['Rowing ergometer', 'Rower'], muscleGroups: ['quads', 'glutes', 'back', 'core'], equipment: 'machine' },
+  { id: 'ex-stair-climber', name: 'Stair Climber', aliases: ['Stairmaster', 'Step machine'], muscleGroups: ['quads', 'glutes', 'calves'], equipment: 'machine' },
+].map((exercise) => ({ ...exercise, categories: ['cardio'], primaryCategory: 'cardio', recordingFormat: 'duration-distance' })) as Exercise[]
+
 const model = (id: string, modelName: string, exerciseIds: string | string[], muscleGroups: EquipmentModelRecord['muscleGroups'], qrUrls: string[] = []): EquipmentModelRecord => ({
   id, manufacturer: 'Life Fitness', modelName, qrUrls, qrKeys: qrUrls.map(normalizeQrUrl),
   videoUrl: qrUrls[0] ?? 'https://www.youtube.com/@LifeFitnessTraining', muscleGroups,
@@ -199,6 +208,17 @@ export function ensureSeeded(): Promise<void> {
       } finally {
         syncFlags.seeding = false
       }
+    }
+    // Add missing cardio entries to both existing and fresh catalogs. Never overwrite user edits.
+    syncFlags.seeding = true
+    try {
+      await db.transaction('rw', db.exercises, async () => {
+        for (const exercise of cardioExercises) {
+          if (!(await db.exercises.get(exercise.id))) await db.exercises.add(exercise)
+        }
+      })
+    } finally {
+      syncFlags.seeding = false
     }
     await seedLocal()
   })

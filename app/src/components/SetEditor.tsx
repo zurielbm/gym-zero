@@ -17,7 +17,8 @@ export function SetEditor({ set, exerciseName, onSave, onCancel }: {
   const [weight, setWeight] = useState(String(set.weightLb))
   const [reps, setReps] = useState(String(set.reps))
   const action = useAction()
-  const weightLb = Number(weight)
+  const repsOnly = original.recordingFormat === 'reps'
+  const weightLb = repsOnly ? 0 : Number(weight)
   const repCount = Number(reps)
   const valid = !!weight.trim() && Number.isFinite(weightLb) && weightLb >= 0
     && !!reps.trim() && Number.isInteger(repCount) && repCount > 0
@@ -25,9 +26,9 @@ export function SetEditor({ set, exerciseName, onSave, onCancel }: {
   return <form className="set-editor" aria-label={`Edit ${exerciseName} set ${set.setNumber}`}
     onSubmit={event => { event.preventDefault(); if (valid && changed) void action.run(() => onSave({ weightLb, reps: repCount }, original)) }}>
     <b>Edit set {set.setNumber}</b>
-    <p className="small">{exerciseName} · saved as {original.weightLb} lb × {original.reps} reps</p>
+    <p className="small">{exerciseName} · saved as {repsOnly ? `${original.reps} reps` : `${original.weightLb} lb × ${original.reps} reps`}</p>
     <div className="in-grid">
-      <div className="field"><label htmlFor={`${id}-weight`}>Weight (lb)</label><input id={`${id}-weight`} className="text-in" inputMode="decimal" value={weight} disabled={action.busy} onChange={event => setWeight(event.target.value)} /></div>
+      {!repsOnly && <div className="field"><label htmlFor={`${id}-weight`}>Weight (lb)</label><input id={`${id}-weight`} className="text-in" inputMode="decimal" value={weight} disabled={action.busy} onChange={event => setWeight(event.target.value)} /></div>}
       <div className="field"><label htmlFor={`${id}-reps`}>Reps</label><input id={`${id}-reps`} className="text-in" inputMode="numeric" autoFocus value={reps} disabled={action.busy} onFocus={event => event.target.select()} onChange={event => setReps(event.target.value)} /></div>
     </div>
     {!valid && <p className="small" role="status">Enter a weight of 0 or more and a whole-number rep count above 0.</p>}

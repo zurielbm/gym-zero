@@ -2,31 +2,35 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
 import { aiConfig, identifyExercisePhoto, identifyExerciseDescription, useAiAvailable, type AiExercisePhotoResult } from '../lib/ai'
 import { Seg } from './Seg'
+import { ExerciseReview, type ExerciseDraft } from './ExerciseReview'
 import { downscalePhoto } from '../lib/image'
 import type { Exercise } from '../types'
-
-const confidenceLabel: Record<AiExercisePhotoResult['confidence'], string> = {
-  high: 'Confidence high', medium: 'Best guess', low: 'Low confidence',
-}
 
 /**
  * "What is this machine?" from a photo instead of a QR sticker. The photo stays
  * on the device — the only place it ever goes is the user's own AI proxy, and
  * only when they tap Identify. Nothing is written to the database from an AI
- * guess: the user picks the exercise, and that pick starts the workout.
+ * guess: the user reviews and confirms the exercise, and that confirmation is
+ * what saves it and starts the workout. Browsing and adding by hand need no AI
+ * at all, so the manual path stays open when the proxy is off or unreachable.
  */
 export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string }) {
-  const { api, go, settings, exercises, activeWorkout, setActiveWorkout } = useApp()
+  const { api, go, settings, exercises, activeWorkout, setActiveWorkout, refreshExercises } = useApp()
   const ai = useAiAvailable(settings)
   const [photo, setPhoto] = useState<string | null>(null)
   const [mode, setMode] = useState<'photo' | 'describe'>('photo')
   const [description, setDescription] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [logging, setLogging] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AiExercisePhotoResult | null>(null)
-  const [chosenId, setChosenId] = useState('')
+  /** manual review: browsing the catalog or adding by hand, with no AI involved */
+  const [manual, setManual] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [reviewNote, setReviewNote] = useState<string | null>(null)
+  /** bumped after a delete so the review re-derives from the refreshed catalog */
+  const [reviewKey, setReviewKey] = useState(0)
   const takeRef = useRef<HTMLInputElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   // every photo/identify run takes a ticket; a stale run never writes state
@@ -44,17 +48,13 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
     () => [...exercises.values()].sort((a, b) => a.name.localeCompare(b.name)),
     [exercises],
   )
-  const matches = useMemo(
-    () => (result?.exerciseIds ?? [])
-      .map((id) => exercises.get(id))
-      .filter((e): e is Exercise => !!e),
-    [result, exercises],
-  )
 
   const clearResult = () => {
     setResult(null)
-    setChosenId('')
+    setManual(false)
     setError(null)
+    setReviewError(null)
+    setReviewNote(null)
   }
 
   const usePhoto = (dataUrl: string, ticket: number) => {
@@ -101,7 +101,9 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
     setBusy(true)
     setError(null)
     setResult(null)
-    setChosenId('')
+    setManual(false)
+    setReviewError(null)
+    setReviewNote(null)
     try {
       const identified = mode === 'describe'
         ? await identifyExerciseDescription(config, description, catalog)
@@ -124,26 +126,65 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
     clearResult()
   }
 
-  const logExercise = async () => {
-    if (!exercises.has(chosenId) || logLock.current || operation.current) return
+  /**
+   * The first and only write of this flow. saveExercise deduplicates, so a name
+   * that already exists comes back as the existing record — we follow the id it
+   * returns rather than assuming a new one was created.
+   */
+  const confirmExercise = async (draft: ExerciseDraft) => {
+    if (logLock.current || operation.current) return
     logLock.current = true
-    setLogging(true)
-    setError(null)
+    setSaving(true)
+    setReviewError(null)
+    setReviewNote(null)
     try {
+      const saved = await api.saveExercise(draft)
+      await refreshExercises()
+      if (!alive.current) return
       if (!activeWorkout) {
         const workout = await api.startWorkout()
         if (!alive.current) return
         setActiveWorkout(workout)
       }
-      if (alive.current) go({ name: 'workout', exerciseId: chosenId })
+      if (alive.current) go({ name: 'workout', exerciseId: saved.id })
     } catch (err) {
-      if (alive.current) setError(err instanceof Error ? err.message : String(err))
+      if (alive.current) setReviewError(err instanceof Error ? err.message : String(err))
     } finally {
       logLock.current = false
-      if (alive.current) setLogging(false)
+      if (alive.current) setSaving(false)
     }
   }
 
+  /** The API refuses exercises that history references; that error is the message. */
+  const deleteCustom = async (exercise: Exercise) => {
+    if (logLock.current || operation.current) return
+    logLock.current = true
+    setSaving(true)
+    setReviewError(null)
+    setReviewNote(null)
+    try {
+      await api.deleteExercise(exercise.id)
+      await refreshExercises()
+      if (!alive.current) return
+      setReviewKey((k) => k + 1)
+      setReviewNote(`Deleted ${exercise.name}.`)
+    } catch (err) {
+      if (alive.current) setReviewError(err instanceof Error ? err.message : String(err))
+    } finally {
+      logLock.current = false
+      if (alive.current) setSaving(false)
+    }
+  }
+
+  const openManual = () => {
+    if (operation.current || logLock.current) return
+    setError(null)
+    setReviewError(null)
+    setReviewNote(null)
+    setManual(true)
+  }
+
+  const reviewing = !!result || manual
   const disabled = !ai.available
   const openSettings = () => go({ name: 'settings' })
 
@@ -152,7 +193,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
       <div className="row">
         <span className="lab lm">✦ Identify an exercise</span>
         {mode === 'photo' && photo && (
-          <button className="back-link" style={{ margin: 0 }} disabled={busy || logging} onClick={retake}>
+          <button className="back-link" style={{ margin: 0 }} disabled={busy || saving} onClick={retake}>
             Retake
           </button>
         )}
@@ -174,7 +215,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         <div className="field">
           <label htmlFor="exercise-description">Describe the exercise or workout movement</label>
           <textarea id="exercise-description" className="text-in" rows={4} maxLength={1000}
-            style={{ resize: 'vertical', width: '100%' }} value={description} disabled={busy || logging}
+            style={{ resize: 'vertical', width: '100%' }} value={description} disabled={busy || saving}
             placeholder="I sit on a bench and pull a cable handle toward my stomach, keeping my elbows close."
             onChange={(e) => { setDescription(e.target.value); clearResult() }} />
         </div>
@@ -218,7 +259,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         }}
       />
 
-      {(mode === 'describe' || photo) && !result && (
+      {(mode === 'describe' || photo) && !reviewing && (
         <>
           {mode === 'photo' && <div className="field">
             <label htmlFor="exercise-photo-note">Anything to add? — optional</label>
@@ -239,7 +280,7 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         </>
       )}
 
-      {disabled && (
+      {disabled && !reviewing && (
         <button className="ai-hint" onClick={openSettings}>
           {ai.configured
             ? '⚡ AI offline — connect to Tailscale, or check the endpoint in Settings ›'
@@ -247,11 +288,18 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         </button>
       )}
 
+      {/* browsing and adding by hand never need the AI, so this stays open always */}
+      {!reviewing && (
+        <button className="ghost-btn" style={{ marginTop: 8 }} disabled={busy} onClick={openManual}>
+          ☰ Pick or add it myself
+        </button>
+      )}
+
       <span className="small" role="status" aria-live="polite" style={{ display: busy ? 'block' : 'none', marginTop: 8 }}>
         {mode === 'describe' ? 'Reading your description…' : 'Reading the photo…'}
       </span>
 
-      {error && (
+      {error && !reviewing && (
         <div style={{ marginTop: 10 }}>
           <span className="small" role="alert" style={{ color: 'var(--danger)', display: 'block' }}>{error}</span>
           {(mode === 'describe' ? !!description.trim() : !!photo) && (
@@ -263,95 +311,13 @@ export function ExercisePhoto({ capturePhoto }: { capturePhoto?: () => string })
         </div>
       )}
 
-      {result && (
-        <div aria-live="polite" style={{ borderTop: '1px solid var(--hairline)', marginTop: 12, paddingTop: 12 }}>
-          <div className="row">
-            <span className="lab lm">{result.identified ? result.name || 'Machine spotted' : 'Not sure what that is'}</span>
-            <span className="lab">{confidenceLabel[result.confidence]}</span>
-          </div>
-          {result.explanation && (
-            <span className="small" style={{ display: 'block', marginTop: 6 }}>{result.explanation}</span>
-          )}
-          {result.muscleGroups.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              {result.muscleGroups.map((group) => (
-                <span key={group} className="chip" style={{ textTransform: 'capitalize' }}>{group}</span>
-              ))}
-            </div>
-          )}
-          {result.howTo.length > 0 && (
-            <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-              {result.howTo.map((cue, i) => <li key={i}>{cue}</li>)}
-            </ul>
-          )}
-
-          {matches.length > 0 ? (
-            <div style={{ marginTop: 12 }} role="group" aria-label="Possible exercise matches">
-              <span className="lab" style={{ display: 'block', marginBottom: 8 }}>
-                {matches.length === 1 ? 'Is this what you are doing?' : 'Which one are you doing?'}
-              </span>
-              {matches.map((exercise) => (
-                <button
-                  key={exercise.id}
-                  className={`machine-movement${exercise.id === chosenId ? ' current' : ''}`}
-                  aria-pressed={exercise.id === chosenId}
-                  disabled={logging}
-                  onClick={() => setChosenId(exercise.id)}
-                >
-                  <b>{exercise.name}</b>
-                  <span>{exercise.muscleGroups.join(' · ')}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="field" style={{ marginTop: 12 }}>
-              <label htmlFor="exercise-photo-pick">
-                {result.identified
-                  ? 'Nothing in your catalog matches it — pick the closest exercise'
-                  : 'Pick the exercise yourself'}
-              </label>
-              <select
-                id="exercise-photo-pick" className="text-in" value={chosenId} disabled={logging}
-                onChange={(e) => setChosenId(e.target.value)}
-              >
-                <option value="">Choose an exercise…</option>
-                {catalog.map((exercise) => (
-                  <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {matches.length > 0 && (
-            <div className="field" style={{ marginTop: 10 }}>
-              <label htmlFor="exercise-photo-other">Not one of those? Pick it by hand</label>
-              <select
-                id="exercise-photo-other" className="text-in"
-                value={matches.some((m) => m.id === chosenId) ? '' : chosenId} disabled={logging}
-                onChange={(e) => setChosenId(e.target.value)}
-              >
-                <option value="">Something else…</option>
-                {catalog.map((exercise) => (
-                  <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <span className="small" style={{ display: 'block', margin: '4px 0 10px' }}>
-            {chosenId
-              ? `Logging ${exercises.get(chosenId)?.name ?? 'this exercise'}${activeWorkout ? '' : ' — this starts a workout'}.`
-              : 'AI guesses are never saved on their own — choose the exercise to log it.'}
-          </span>
-          <button className="big-btn" disabled={!chosenId || logging} onClick={() => void logExercise()}>
-            {logging ? 'Starting…' : 'Log exercise →'}
-          </button>
-          <div style={{ height: 8 }} />
-          <button className="ghost-btn" disabled={logging || busy} onClick={retake}>
-            {mode === 'describe' ? 'Refine description' : 'Retake photo'}
-          </button>
-        </div>
-      )}
+      {reviewing && <>
+        {reviewNote && <p className="small" role="status">{reviewNote}</p>}
+        <ExerciseReview key={reviewKey} result={result} exercises={exercises} saving={saving}
+          error={reviewError} onConfirm={(draft) => void confirmExercise(draft)}
+          onDelete={(exercise) => void deleteCustom(exercise)}
+          onCancel={clearResult} />
+      </>}
     </div>
   )
 }

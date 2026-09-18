@@ -3,6 +3,8 @@ import { SetEditor, EditedSetLabel } from '../components/SetEditor'
 import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { WorkoutSummary, WorkoutSet } from '../types'
+import { formatActivity } from '../lib/exercises'
+import type { ActivityLog } from '../types'
 
 export function SummaryScreen({ workoutId }: { workoutId: string }) {
   const { api, go, exercises } = useApp()
@@ -15,15 +17,17 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
   const [editingSetId, setEditingSetId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [activities, setActivities] = useState<ActivityLog[]>([])
   const [notes, setNotes] = useState('')
   const [notesSaved, setNotesSaved] = useState(false)
 
   useEffect(() => {
     let alive = true
     setLoadError(false)
-    Promise.all([api.getWorkoutSummary(workoutId), api.listSets(workoutId), api.listMachines()]).then(([s, rows, stations]) => {
+    Promise.all([api.getWorkoutSummary(workoutId), api.listSets(workoutId), api.listMachines(), api.listActivities(workoutId)]).then(([s, rows, stations, entries]) => {
       if (!alive) return
       setSummary(s ?? null)
+      setActivities(entries)
       setSets(rows)
       setMachines(Object.fromEntries(stations.map(machine => [machine.id, machine.nickname])))
       setNotes(s?.workout.notes ?? '')
@@ -72,6 +76,14 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
         </span>
       </div>
 
+      {summary.activityCount > 0 && <div className="card">
+        <span className="lab lm">Timed activity · {Number((summary.timedDurationSec / 60).toFixed(1))} min</span>
+        <p className="small">{Number((summary.cardioDurationSec / 60).toFixed(1))} cardio min · {Number(summary.distanceMiles.toFixed(2))} mi recorded</p>
+        {activities.map((entry) => <div key={entry.id} className="meal-row">
+          <span><b>{exercises.get(entry.exerciseId)?.name ?? 'Exercise'}</b><br /><span className="small">{formatActivity(entry)}</span></span>
+        </div>)}
+      </div>}
+
       <div className="card">
         <span className="lab" style={{ display: 'block', marginBottom: 4 }}>Highlights</span>
         {summary.prs.length > 0 ? (
@@ -82,7 +94,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
             </div>
           ))
         ) : (
-          <div className="meal-row"><span className="small">{summary.setCount} sets logged — keep stacking.</span></div>
+          <div className="meal-row"><span className="small">{summary.setCount} lifting sets · {summary.activityCount} timed entries logged.</span></div>
         )}
       </div>
 
@@ -104,7 +116,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
         {[...new Set(sets.map(set => set.exerciseId))].map(exerciseId => <div className="card" key={exerciseId}>
           <h3 className="summary-exercise-name">{exercises.get(exerciseId)?.name ?? 'Exercise'}</h3>
           {sets.filter(set => set.exerciseId === exerciseId).sort((a, b) => a.setNumber - b.setNumber).map(set => <div className="summary-set" key={set.id}>
-            <div className="summary-set-values"><span className="lab">Set {set.setNumber}</span><b>{set.weightLb} lb × {set.reps} reps</b><EditedSetLabel set={set} /></div>
+            <div className="summary-set-values"><span className="lab">Set {set.setNumber}</span><b>{set.recordingFormat === 'reps' ? `${set.reps} reps` : `${set.weightLb} lb × ${set.reps} reps`}</b><EditedSetLabel set={set} /></div>
             {set.machineId && machines[set.machineId] && <p className="small">{machines[set.machineId]}</p>}
             <button className="text-button" aria-label={`Edit ${exercises.get(exerciseId)?.name ?? 'exercise'} set ${set.setNumber}`} disabled={action.busy || editingSetId !== null} onClick={() => setEditingSetId(set.id)}>Edit set</button>
             {editingSetId === set.id && <SetEditor set={set} exerciseName={exercises.get(exerciseId)?.name ?? 'Exercise'} onSave={saveSetEdit} onCancel={() => setEditingSetId(null)} />}

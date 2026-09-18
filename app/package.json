@@ -18,7 +18,9 @@
     "e2e:machine-ai": "node e2e/machine-ai.mjs",
     "e2e:machine-muscles": "node e2e/machine-muscles.mjs",
     "e2e:rest-edits": "node e2e/rest-edits.mjs",
-    "test:exercise-photo": "node e2e/exercise-photo-ai.mjs"
+    "test:exercise-photo": "node e2e/exercise-photo-ai.mjs",
+    "test:exercise-data": "node e2e/exercise-data.mjs",
+    "test:exercise-review": "node e2e/exercise-review.mjs"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.12.5",

@@ -3,8 +3,10 @@ import { SetEditor, EditedSetLabel } from '../components/SetEditor'
 import { MusclePreview } from '../components/MuscleMap'
 import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
-import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
-import { machineSupportsExercise } from '../types'
+import type { ActivityLog, AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
+import { isTimedExercise, recordingFormat, machineSupportsExercise } from '../types'
+
+import { ActivityLogger } from '../components/ActivityLogger'
 
 interface Draft { w: string; r: string }
 const workoutSelections = new Map<string, string>()
@@ -13,6 +15,10 @@ const workoutDrafts = new Map<string, Record<string, Record<number, Draft>>>()
 export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initialExerciseId?: string; initialMachineId?: string }) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
   const [routine, setRoutine] = useState<Routine | null>(null)
+  const [activities, setActivities] = useState<ActivityLog[]>([])
+  const [saving, setSaving] = useState(false)
+  const saveLock = useRef(false)
+  const [error, setError] = useState('')
   const [sets, setSets] = useState<WorkoutSet[]>([])
   const [editingSetId, setEditingSetId] = useState<string | null>(null)
   const [addedExercises, setAddedExercises] = useState<string[]>(() => Object.keys(workoutDrafts.get(activeWorkout?.id ?? '') ?? {}))
@@ -43,10 +49,12 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
       api.listSets(workout.id),
       api.listMachines(),
       api.listBaselines(),
-    ]).then(([r, ss, ms, bs]) => {
+      api.listActivities(workout.id),
+    ]).then(([r, ss, ms, bs, aa]) => {
       if (!alive) return
       setRoutine(r)
       setSets(ss)
+      setActivities(aa)
       setMachines(ms)
       setBaselines(new Map(bs.map((b) => [b.id, b])))
       setCurrentId((cur) => {
@@ -54,11 +62,11 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         // first exercise with unfinished target sets, else first item, else first logged
         if (r) {
           const open = r.items.find(
-            (it) => ss.filter((s) => s.exerciseId === it.exerciseId).length < it.targetSets,
+            (it) => [...ss, ...aa].filter((s) => s.exerciseId === it.exerciseId).length < it.targetSets,
           )
           return (open ?? r.items[0])?.exerciseId
         }
-        return ss[0]?.exerciseId
+        return ss[0]?.exerciseId ?? aa[0]?.exerciseId
       })
     })
     return () => { alive = false }
@@ -113,10 +121,13 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const exerciseIds = useMemo(() => {
     const ids = routine ? routine.items.map((i) => i.exerciseId) : []
     for (const id of addedExercises) if (!ids.includes(id)) ids.push(id)
-    for (const s of sets) if (!ids.includes(s.exerciseId)) ids.push(s.exerciseId)
+    for (const s of [...sets, ...activities]) if (!ids.includes(s.exerciseId)) ids.push(s.exerciseId)
     if (currentId && !ids.includes(currentId)) ids.push(currentId)
     return ids
-  }, [routine, sets, currentId, addedExercises])
+  }, [routine, sets, currentId, addedExercises, activities])
+  const currentExercise = currentId ? exercises.get(currentId) : undefined
+  const timed = isTimedExercise(currentExercise)
+  const repsOnly = recordingFormat(currentExercise) === 'reps'
 
   if (!workout) {
     return (
@@ -129,7 +140,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const targetSets = (exerciseId: string) =>
-    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? (exerciseId === currentId ? program?.sets : undefined) ?? 3
+    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? (exerciseId === currentId && recordingFormat(exercises.get(exerciseId)) === 'weight-reps' ? program?.sets : undefined) ?? (isTimedExercise(exercises.get(exerciseId)) && recordingFormat(exercises.get(exerciseId)) !== 'timed-sets' ? 1 : 3)
 
   const logged = sets
     .filter((s) => s.exerciseId === currentId)
@@ -137,8 +148,8 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const perf = currentId ? prev[currentId] : undefined
   // fallbacks only fill the gap until real history exists — history always wins,
   // then the self-reported baseline, then the AI target
-  const progTarget = currentId && !perf ? program : undefined
-  const baseline = currentId && !perf ? baselines.get(currentId) : undefined
+  const progTarget = currentId && !perf && !timed && !repsOnly ? program : undefined
+  const baseline = currentId && !perf && !timed && !repsOnly ? baselines.get(currentId) : undefined
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
   const defaultFor = (i: number): Draft => {
@@ -147,31 +158,35 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
     const fromPrev = perf?.sets[i] ?? perf?.sets[perf.sets.length - 1]
     const before = logged[i - 1]
     const w = fromPrev?.weightLb ?? before?.weightLb ?? baseline?.weightLb ?? progTarget?.startWeightLb
-    const r = fromPrev?.reps ?? before?.reps ?? baseline?.reps ?? progTarget?.reps ?? routine?.items.find((item) => item.exerciseId === currentId)?.targetReps
+    const r = fromPrev?.reps ?? before?.reps ?? routine?.items.find((item) => item.exerciseId === currentId)?.targetReps ?? baseline?.reps ?? progTarget?.reps
     return { w: w != null ? String(w) : '', r: r != null ? String(r) : '' }
   }
 
   const logRow = async (i: number) => {
-    if (!currentId) return
+    if (!currentId || saving || saveLock.current) return
     const d = defaultFor(i)
-    const weightLb = Number(d.w)
+    const weightLb = repsOnly ? 0 : Number(d.w)
     const reps = Number(d.r)
-    if (!d.w.trim() || !d.r.trim() || !isFinite(weightLb) || weightLb < 0 || !Number.isInteger(reps) || reps <= 0) return
-    const machine = machines.find((candidate) =>
-      candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
-    )
-    const saved = await api.logSet({
-      workoutId: workout.id,
-      exerciseId: currentId,
-      machineId: machine?.id,
-      weightLb,
-      reps,
-      setNumber: Math.max(0, ...logged.map((set) => set.setNumber)) + 1,
-    })
-    setSets((old) => [...old, saved])
-    setDrafts((old) => { const next = { ...old[currentId] }; delete next[i]; return { ...old, [currentId]: next } })
-    startRest(progTarget?.restSeconds)
-    notify(`Set ${logged.length + 1} saved · ${weightLb} lb × ${reps}`)
+    if ((!repsOnly && !d.w.trim()) || !isFinite(weightLb) || weightLb < 0 || !Number.isInteger(reps) || reps <= 0) { setError('Enter a valid weight and whole number of reps.'); return }
+    saveLock.current = true; setSaving(true); setError('')
+    try {
+      const machine = machines.find((candidate) =>
+        candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
+      )
+      const saved = await api.logSet({
+        workoutId: workout.id,
+        exerciseId: currentId,
+        machineId: machine?.id,
+        weightLb,
+        reps,
+        setNumber: Math.max(0, ...logged.map((set) => set.setNumber)) + 1,
+      })
+      setSets((old) => [...old, saved])
+      setDrafts((old) => { const next = { ...old[currentId] }; delete next[i]; return { ...old, [currentId]: next } })
+      startRest(progTarget?.restSeconds)
+      notify(`Set ${saved.setNumber} saved · ${repsOnly ? `${reps} reps` : `${weightLb} lb × ${reps}`}`)
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const saveSetEdit = async (values: Pick<WorkoutSet, 'weightLb' | 'reps'>, expected: WorkoutSet) => {
@@ -195,14 +210,20 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const deleteRow = async (s: WorkoutSet) => {
+    if (saveLock.current || saving) return
+    saveLock.current = true; setSaving(true); setError('')
     disarm()
-    await api.deleteSet(s.id)
-    setSets((old) => old.filter((other) => other.id !== s.id))
-    // the delete may have rolled the baseline back — re-read so suggestions stay honest
-    setBaselines(new Map((await api.listBaselines()).map((b) => [b.id, b])))
+    try {
+      await api.deleteSet(s.id)
+      setSets((old) => old.filter((other) => other.id !== s.id))
+      // the delete may have rolled the baseline back — re-read so suggestions stay honest
+      setBaselines(new Map((await api.listBaselines()).map((b) => [b.id, b])))
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const switchExercise = (id: string) => {
+    if (saving || saveLock.current) return
     setAddedExercises((old) => old.includes(id) ? old : [...old, id])
     setDrafts((old) => ({ ...old, [id]: old[id] ?? {} }))
     setEditingSetId(null)
@@ -212,15 +233,20 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const finish = async () => {
-    const summary = await api.finishWorkout(workout.id)
-    workoutDrafts.delete(workout.id)
-    workoutSelections.delete(workout.id)
-    setActiveWorkout(undefined)
-    go({ name: 'summary', workoutId: summary.workout.id })
+    if (saving || saveLock.current) return
+    saveLock.current = true; setSaving(true); setError('')
+    try {
+      const summary = await api.finishWorkout(workout.id)
+      workoutDrafts.delete(workout.id)
+      workoutSelections.delete(workout.id)
+      setActiveWorkout(undefined)
+      go({ name: 'summary', workoutId: summary.workout.id })
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const cancel = async () => {
-    if (!confirm('Discard this workout and all its sets?')) return
+    if (saving || !confirm('Discard this workout and all its logged entries?')) return
     await api.cancelWorkout(workout.id)
     workoutDrafts.delete(workout.id)
     workoutSelections.delete(workout.id)
@@ -240,7 +266,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
       <div className="row" style={{ marginBottom: 8 }}>
         <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'routines' })}>
           ‹ {routine ? `${routine.emoji ?? ''} ${routine.name}`.trim() : 'Workout'}
-          {routine && ` · ${exerciseIds.filter((id) => sets.some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
+          {routine && ` · ${exerciseIds.filter((id) => [...sets, ...activities].some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
         </button>
         <span className="num" style={{ fontSize: '1.2rem', color: 'var(--lime)', margin: 0 }}>{elapsed}</span>
       </div>
@@ -280,9 +306,16 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
             </div>
           )}
 
-          {currentId && (
+          {error && <p role="alert" className="small" style={{ color: 'var(--danger)' }}>{error}</p>}
+          {currentId && timed && currentExercise && <ActivityLogger key={currentId}
+            exercise={currentExercise} workoutId={workout.id} machineId={selectedMachineId}
+            entries={activities.filter((a) => a.exerciseId === currentId)}
+            target={routine?.items.find((i) => i.exerciseId === currentId)}
+            onBusyChange={setSaving}
+            onChange={(entries) => setActivities((all) => [...all.filter((a) => a.exerciseId !== currentId), ...entries])} />}
+          {currentId && !timed && (
             <div className="card">
-              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>lb</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
+              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>{repsOnly ? 'Bodyweight' : 'lb'}</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
               {Array.from({ length: rowCount }, (_, i) => {
                 const done = logged[i]
                 const prevHint = perf?.sets[i]
@@ -292,19 +325,19 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     <div className="set-row">
                       <b>{done.setNumber}</b>
                       <div>
-                        <div className="logged-val">{done.weightLb}</div>
+                        <div className="logged-val">{done.recordingFormat === 'reps' ? '—' : done.weightLb}</div>
                         {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
                       </div>
                       <div className="logged-val">{done.reps}</div>
                       <button
                         className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
                         title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
-                        disabled={action.busy || editingSetId !== null} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
+                        disabled={saving || action.busy || editingSetId !== null} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
                       >
                         {armedId === done.id ? '✕' : '✓'}
                       </button>
                     </div>
-                    <div className="saved-set-actions"><EditedSetLabel set={done} /><button className="text-button" aria-label={`Edit set ${done.setNumber}`} disabled={action.busy || editingSetId !== null} onClick={() => { disarm(); setEditingSetId(done.id) }}>Edit set</button></div>
+                    <div className="saved-set-actions"><EditedSetLabel set={done} /><button className="text-button" aria-label={`Edit set ${done.setNumber}`} disabled={saving || action.busy || editingSetId !== null} onClick={() => { disarm(); setEditingSetId(done.id) }}>Edit set</button></div>
                     {editingSetId === done.id && <SetEditor set={done} exerciseName={curName} onSave={saveSetEdit} onCancel={() => setEditingSetId(null)} />}
                     </div>
                   )
@@ -317,7 +350,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     <div>
                       <input
                         className={`set-in${isNext ? '' : ' pending'}`}
-                        aria-label={`Set ${i + 1} weight in pounds`} disabled={action.busy} inputMode="decimal" value={d.w} placeholder="lb"
+                        aria-label={`Set ${i + 1} weight in pounds`} disabled={action.busy || saving || repsOnly} inputMode="decimal" value={repsOnly ? '—' : d.w} placeholder="lb"
                         onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, w: e.target.value } } }))}
                       />
                       {prevHint
@@ -332,10 +365,10 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     </div>
                     <input
                       className={`set-in${isNext ? '' : ' pending'}`}
-                      aria-label={`Set ${i + 1} reps`} disabled={action.busy} inputMode="numeric" value={d.r} placeholder="reps"
+                      aria-label={`Set ${i + 1} reps`} disabled={action.busy || saving} inputMode="numeric" value={d.r} placeholder="reps"
                       onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, r: e.target.value } } }))}
                     />
-                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={action.busy || editingSetId !== null || !isNext || !d.w.trim() || !d.r.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0 || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
+                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={saving || action.busy || editingSetId !== null || !isNext || (!repsOnly && (!d.w.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0)) || !d.r.trim() || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
                   </div>
                 )
               })}
@@ -343,14 +376,14 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
           )}
 
           {armedId && <p className="small" role="status">Tap the red × again to remove that set.</p>}
-          {currentId && logged.length >= targetSets(currentId) && <div className="card">
+          {!timed && currentId && logged.length >= targetSets(currentId) && <div className="card">
             <p className="small lm" role="status">Target complete · {logged.length} sets saved</p>
-            {exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" disabled={editingSetId !== null} onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && sets.filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
+            {exerciseIds.find((id) => id !== currentId && [...sets, ...activities].filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" disabled={editingSetId !== null} onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && [...sets, ...activities].filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
           </div>}
-          {perf && (
+          {perf && !timed && (
             <p className="lab" style={{ margin: '0 0 12px' }}>
               Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
-              {perf.sets.map((s) => `${s.weightLb}×${s.reps}`).join(' · ')}
+              {perf.sets.map((s) => repsOnly ? `${s.reps} reps` : `${s.weightLb}×${s.reps}`).join(' · ')}
             </p>
           )}
         </div>
@@ -358,35 +391,35 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         <div className="side">
           <p className="section-label" style={{ marginTop: 16 }}>Exercises</p>
           <div className="field">
-            <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={action.busy || editingSetId !== null} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
+            <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={saving || action.busy || editingSetId !== null} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
               <option value="">＋ Add an exercise…</option>
               {[...exercises.values()].filter((ex) => !exerciseIds.includes(ex.id)).map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
             </select>
             {!exerciseIds.length && <p className="small">Choose an exercise above or scan a machine to start logging.</p>}
           </div>
           {exerciseIds.map((id) => {
-            const count = sets.filter((s) => s.exerciseId === id).length
+            const count = [...sets, ...activities].filter((s) => s.exerciseId === id).length
             const target = targetSets(id)
             return (
               <button
-                key={id} disabled={action.busy || editingSetId !== null} aria-pressed={id === currentId}
+                key={id} disabled={saving || action.busy || editingSetId !== null} aria-pressed={id === currentId}
                 className={`exercise-pill${id === currentId ? ' current' : ''}`}
                 onClick={() => switchExercise(id)}
               >
                 <div className="row">
                   <b>{exercises.get(id)?.name ?? id}</b>
-                  <span className="small">{count}/{target} sets</span>
+                  <span className="small">{count}/{target} {isTimedExercise(exercises.get(id)) && recordingFormat(exercises.get(id)) !== 'timed-sets' ? 'entries' : 'sets'}</span>
                 </div>
               </button>
             )
           })}
 
           <div style={{ height: 14 }} />
-          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={action.busy || editingSetId !== null || sets.length === 0}>
+          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={saving || action.busy || editingSetId !== null || (sets.length === 0 && activities.length === 0)}>
             Finish workout →
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" disabled={action.busy || editingSetId !== null} onClick={() => void action.run(cancel)}>Discard workout</button>
+          <button className="ghost-btn danger" disabled={saving || action.busy || editingSetId !== null} onClick={() => void action.run(cancel)}>Discard workout</button>
         </div>
       </div>
     </div>

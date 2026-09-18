@@ -33,11 +33,12 @@ const LEGACY_PROFILE_LS = 'gym.sync.profileKey'
 const LEGACY_CURSOR_LS = 'gym.sync.cursor'
 
 const user = currentUser()
-const cursorKey = () => `gym.sync.cursor::${user!.id}`
+// New table support needs a full pull: older clients skipped activity records.
+const cursorKey = () => `gym.sync.cursor::activity-v1::${user!.id}`
 
 const SYNC_TABLES = [
   'exercises', 'equipmentModels', 'machines', 'routines',
-  'workouts', 'sets', 'food', 'savedMeals', 'drinks', 'containers', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
+  'workouts', 'sets', 'activities', 'food', 'savedMeals', 'drinks', 'containers', 'bodyStats', 'tape', 'machineAi', 'aiPrograms', 'baselines', 'settings',
 ] as const
 
 // ---------- status store (consumed by the UI via useSyncExternalStore) ----------

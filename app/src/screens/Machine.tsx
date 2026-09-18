@@ -9,7 +9,7 @@ import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
 import type { AiProgram, EquipmentModel, Exercise, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
-import { epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
+import { isTimedExercise, recordingFormat, epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
 
 interface ExercisePickerProps {
   value: string[]
@@ -197,7 +197,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
   const generateProgram = async (m: GymMachine, exerciseId: string, override?: Partial<Settings>) => {
     const config = aiConfig(settings)
     const exercise = exercises.get(exerciseId)
-    if (!config || !exercise) return
+    if (!config || !exercise || recordingFormat(exercise) !== 'weight-reps') return
     programRetry.current = () => void generateProgram(m, exerciseId, override)
     programRevision.current += 1
     await programTask.run(program ? 'Updating your program…' : 'Building your starter program…', async (options) => {
@@ -319,6 +319,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
     ? selectedExerciseId
     : supportedExerciseIds[0] ?? machine.exerciseId
   const ex = exercises.get(currentExerciseId)
+  const weighted = recordingFormat(ex) === 'weight-reps'
   const patch = (p: Partial<GymMachine>) => {
     setMachine(current => current ? normalizeMachineExercises({ ...current, ...p }) : current)
     void api.patchMachine(machine.id, p).catch(() => notify('Could not save your machine changes. Please try again.', { error: true }))
@@ -449,7 +450,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
 
       {ex && <MuscleMap exercise={ex} />}
       <div className="machine-log-action">
-        <button className="big-btn" disabled={action.busy || editingExercises} onClick={() => void action.run(logSets)}>Log {ex?.name ?? 'exercise'} sets →</button>
+        <button className="big-btn" disabled={action.busy || editingExercises} onClick={() => void action.run(logSets)}>Log {ex?.name ?? 'exercise'}{isTimedExercise(ex) ? ' time' : ' sets'} →</button>
         <p className="small">Previewing does not log a set. Your choice is remembered when you open it for logging.</p>
         <details className="machine-save-explainer"><summary>How this is saved</summary>
           <p className="small">One saved station keeps all its exercises. Each set records the chosen exercise and this station; starter programs are separate for each pair. Your routine takes priority when you return, otherwise the last used exercise opens.</p>
@@ -461,7 +462,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
       {identification}
       {!identification && <AiConnection ai={aiAvail} onSettings={() => go({ name: 'settings' })} />}
 
-      {program ? (
+      {weighted && (program ? (
         <div className="card">
           <div className="row">
             <span className="lab lm">✦ Your starter program</span>
@@ -525,9 +526,9 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
           </button>
           <div style={{ height: 10 }} />
         </>
-      )}
+      ))}
       <AiTaskStatus task={programTask} onRetry={() => programRetry.current()} />
-      {program && <div className="ai-feedback">
+      {weighted && program && <div className="ai-feedback">
         <label className="lab" htmlFor="program-feedback">Adjust your program</label>
         <textarea id="program-feedback" className="text-in" rows={2} value={programFeedback} disabled={progBusy}
           placeholder="e.g. The starting weight feels too heavy; I only have 15 minutes"
@@ -537,7 +538,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         <p className="small">Your current program stays available while AI checks your feedback.</p>
       </div>}
 
-      {!perf && (
+      {weighted && !perf && (
         <div className="card">
           <div className="row">
             <span className="lab lm">I know my weight</span>
