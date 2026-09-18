@@ -63,3 +63,26 @@ const unclear = await identifyExerciseDescription(config, 'A machine at the gym'
 assert.deepEqual(unclear.exerciseIds, [])
 assert.equal(unclear.explanation, 'Are you pushing or pulling?')
 console.log('Exercise photo AI contract checks passed.')
+
+response = { identified: true, name: 'Elliptical trainer', confidence: 'high', exerciseIds: ['invented'], categories: ['cardio', 'invalid', 'cardio'], primaryCategory: 'strength', primaryMuscles: ['quads', 'glutes', 'quads', 'invalid'], supportingMuscles: ['quads', 'calves'], recordingFormat: 'duration-distance', equipment: 'machine', matchKind: 'exact', matchReasons: { invented: 'looks similar' } }
+const elliptical = await identifyExercisePhoto(config, photo, catalog)
+assert.deepEqual(elliptical.categories, ['cardio'])
+assert.equal(elliptical.primaryCategory, 'cardio')
+assert.equal(elliptical.recordingFormat, 'duration-distance')
+assert.deepEqual(elliptical.primaryMuscles, ['quads', 'glutes'])
+assert.deepEqual(elliptical.supportingMuscles, ['calves'])
+assert.equal(elliptical.matchKind, 'none')
+assert.equal(elliptical.confidence, 'high', 'equipment recognition is independent of catalog fit')
+assert.deepEqual(elliptical.matchReasons, {})
+response = { identified: true, name: 'Multi-use machine', exerciseIds: ['press', 'incline'], matchKind: 'exact', recordingFormat: 'invalid', categories: 'cardio', primaryMuscles: [null], matchReasons: { press: ' Push handles ', invented: 'not catalog' } }
+const ambiguous = await identifyExerciseDescription(config, 'A machine', [...catalog, { ...catalog[0], id: 'incline' }])
+assert.equal(ambiguous.matchKind, 'possible')
+assert.equal(ambiguous.recordingFormat, undefined)
+assert.deepEqual(ambiguous.categories, [])
+assert.equal(ambiguous.matchReasons.press, 'Push handles')
+response = { identified: false, name: 'Unknown', categories: ['strength'], primaryMuscles: ['quads'], recordingFormat: 'weight-reps' }
+const rejected = await identifyExercisePhoto(config, photo, catalog)
+assert.deepEqual(rejected.categories, [])
+assert.deepEqual(rejected.primaryMuscles, [])
+assert.equal(rejected.recordingFormat, undefined)
+console.log('Exercise category, muscle role, and catalog-fit checks passed.')

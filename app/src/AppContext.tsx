@@ -24,6 +24,7 @@ export interface AppCtx {
   setActiveWorkout: (w: Workout | undefined) => void
   /** exercise catalog preloaded for instant name lookups */
   exercises: Map<string, Exercise>
+  refreshExercises: () => Promise<void>
   startRest: (seconds?: number) => void
 }
 

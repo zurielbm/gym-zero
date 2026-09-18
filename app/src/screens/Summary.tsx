@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
-import type { WorkoutSummary } from '../types'
+import { formatActivity } from '../lib/exercises'
+import type { ActivityLog, WorkoutSummary } from '../types'
 
 export function SummaryScreen({ workoutId }: { workoutId: string }) {
   const { api, go, exercises } = useApp()
   const [summary, setSummary] = useState<WorkoutSummary | null>(null)
+  const [activities, setActivities] = useState<ActivityLog[]>([])
   const [notes, setNotes] = useState('')
   const [notesSaved, setNotesSaved] = useState(false)
 
   useEffect(() => {
+    api.listActivities(workoutId).then(setActivities)
     api.getWorkoutSummary(workoutId).then((s) => {
       setSummary(s ?? null)
       setNotes(s?.workout.notes ?? '')
@@ -18,8 +21,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
   if (!summary) return null
 
   const saveNotes = async () => {
-    // v1: finishWorkout doubles as the notes writer (re-stamps finishedAt by a few seconds)
-    await api.finishWorkout(workoutId, notes.trim() || undefined)
+    await api.finishWorkout(workoutId, notes.trim())
     setNotesSaved(true)
   }
 
@@ -44,6 +46,14 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
         </span>
       </div>
 
+      {summary.activityCount > 0 && <div className="card">
+        <span className="lab lm">Timed activity · {Number((summary.timedDurationSec / 60).toFixed(1))} min</span>
+        <p className="small">{Number((summary.cardioDurationSec / 60).toFixed(1))} cardio min · {Number(summary.distanceMiles.toFixed(2))} mi recorded</p>
+        {activities.map((entry) => <div key={entry.id} className="meal-row">
+          <span><b>{exercises.get(entry.exerciseId)?.name ?? 'Exercise'}</b><br /><span className="small">{formatActivity(entry)}</span></span>
+        </div>)}
+      </div>}
+
       <div className="card">
         <span className="lab" style={{ display: 'block', marginBottom: 4 }}>Highlights</span>
         {summary.prs.length > 0 ? (
@@ -54,7 +64,7 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
             </div>
           ))
         ) : (
-          <div className="meal-row"><span className="small">{summary.setCount} sets logged — keep stacking.</span></div>
+          <div className="meal-row"><span className="small">{summary.setCount} lifting sets · {summary.activityCount} timed entries logged.</span></div>
         )}
       </div>
 

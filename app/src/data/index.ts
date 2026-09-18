@@ -1,6 +1,7 @@
-import type { BodyStatEntry, Container, DataAPI, DayDrinkStats, DayFoodStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, WeekFoodStats, Workout, WorkoutSet, WorkoutSummary } from '../types'
+import type { ActivityLog, Exercise, BodyStatEntry, Container, DataAPI, DayDrinkStats, DayFoodStats, DrinkEntry, EquipmentModel, FoodEntry, GymMachine, PrevPerformance, QrResolution, SavedMeal, StrengthBaseline, TapeEntry, WeekActivity, WeekFoodStats, Workout, WorkoutSet, WorkoutSummary } from '../types'
 import { aiProgramId, epleyMaxLb, normalizeMachineExercises, toDayKey } from '../types'
 import { db, type EquipmentModelRecord, type MachineRecord } from './db'
+import { activityIsCardio, exerciseCategories, exerciseNameKey, exerciseNames, isActivityLog, isWeightedSet, normalizeExercise, setVolume } from '../lib/exercises'
 import { normalizeQrUrl } from './qr'
 import { ensureSeeded } from './seed'
 
@@ -14,21 +15,63 @@ const publicModel = ({ qrKeys: _qrKeys, ...model }: EquipmentModelRecord): Equip
 
 async function workoutSummary(workout: Workout): Promise<WorkoutSummary> {
   const workoutSets = await db.sets.where('workoutId').equals(workout.id).toArray()
-  const totalVolumeLb = workoutSets.reduce((total, set) => total + set.weightLb * set.reps, 0)
+  const activities = (await db.activities.where('workoutId').equals(workout.id).toArray()).filter(isActivityLog)
+  const totalVolumeLb = workoutSets.reduce((total, set) => total + setVolume(set), 0)
   const prs: WorkoutSummary['prs'] = []
-  for (const set of workoutSets) {
-    const history = (await db.sets.where('exerciseId').equals(set.exerciseId).toArray()).filter((other) => other.workoutId !== workout.id && other.loggedAt < workout.startedAt)
+  for (const set of workoutSets.filter(isWeightedSet)) {
+    const history = (await db.sets.where('exerciseId').equals(set.exerciseId).toArray()).filter((other) => isWeightedSet(other) && other.workoutId !== workout.id && other.loggedAt < workout.startedAt)
     if (!history.length) continue
     const bestWeight = Math.max(...history.map((other) => other.weightLb))
     const bestReps = Math.max(...history.filter((other) => other.weightLb === bestWeight).map((other) => other.reps))
     if ((set.weightLb > bestWeight || (set.weightLb === bestWeight && set.reps > bestReps)) && !prs.some((pr) => pr.exerciseId === set.exerciseId)) prs.push({ exerciseId: set.exerciseId, weightLb: set.weightLb, reps: set.reps })
   }
-  return { workout, durationSec: Math.round(((workout.finishedAt ?? Date.now()) - workout.startedAt) / 1000), totalVolumeLb, setCount: workoutSets.length, prs }
+  return { workout, durationSec: Math.round(((workout.finishedAt ?? Date.now()) - workout.startedAt) / 1000), totalVolumeLb, setCount: workoutSets.length, activityCount: activities.length, timedDurationSec: activities.reduce((t, a) => t + a.durationSec, 0), cardioDurationSec: activities.filter(activityIsCardio).reduce((t, a) => t + a.durationSec, 0), distanceMiles: activities.reduce((t, a) => t + (a.distanceMiles ?? 0), 0), prs }
 }
 
 export const api: DataAPI = {
   async listExercises() { await ready(); return db.exercises.toArray() },
   async getExercise(id) { await ready(); return db.exercises.get(id) },
+  async saveExercise(input) {
+    await ready()
+    const normalized = normalizeExercise(input)
+    const nameKey = exerciseNameKey(normalized.name)
+    // Stable ID also converges simultaneous offline creation of the same name on two devices.
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nameKey))
+    const newId = `custom-${Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')}`
+    return db.transaction('rw', db.exercises, async () => {
+      const all = await db.exercises.toArray()
+      const duplicate = all.find((e) => e.id !== input.id && exerciseNames(e).some((n) => exerciseNames(normalized).includes(n)))
+      if (duplicate) {
+        if (input.id) throw new Error(`An exercise named “${duplicate.name}” already exists. Select it instead.`)
+        return duplicate
+      }
+      const existing = input.id ? await db.exercises.get(input.id) : undefined
+      if (input.id && !existing) throw new Error('This exercise no longer exists. Select it again.')
+      // A renamed custom record keeps its original ID. Reusing its former name
+      // must not overwrite that record (or its history) through the name hash.
+      let availableId = newId
+      let suffix = 0
+      while (!input.id && all.some((e) => e.id === availableId)) availableId = `${newId}:${++suffix}`
+      const full: Exercise = { ...existing, ...normalized, id: input.id ?? availableId, custom: existing ? existing.custom ?? false : true }
+      await db.exercises.put(full)
+      return full
+    })
+  },
+  async deleteExercise(id) {
+    await ready()
+    await db.transaction('rw', [db.exercises, db.sets, db.activities, db.routines, db.machines, db.baselines], async () => {
+      const exercise = await db.exercises.get(id)
+      if (!exercise) return
+      if (!exercise.custom) throw new Error('Built-in exercises cannot be deleted.')
+      const referenced = await db.sets.where('exerciseId').equals(id).count()
+        || await db.activities.where('exerciseId').equals(id).count()
+        || await db.routines.filter((r) => r.items.some((i) => i.exerciseId === id)).count()
+        || await db.machines.filter((m) => m.exerciseId === id || !!m.exerciseIds?.includes(id)).count()
+        || await db.baselines.get(id)
+      if (referenced) throw new Error('This exercise is used in history, a routine, or a machine. Keep it to preserve those records.')
+      await db.exercises.delete(id)
+    })
+  },
   async listMachines() { await ready(); return (await db.machines.toArray()).map(publicMachine) },
   async getMachine(id) { await ready(); const machine = await db.machines.get(id); return machine && publicMachine(machine) },
   async saveMachine(machine) { await ready(); const normalized = normalizeMachineExercises(machine); const qrKey = normalized.qrUrl ? normalizeQrUrl(normalized.qrUrl) : undefined; await db.machines.put({ ...normalized, ...(qrKey ? { qrKey } : {}) }) },
@@ -43,16 +86,23 @@ export const api: DataAPI = {
   async deleteRoutine(id) { await ready(); await db.routines.delete(id) },
   async getActiveWorkout() { await ready(); return db.workouts.filter((workout) => !workout.finishedAt).first() },
   async startWorkout(routineId) { await ready(); const workout: Workout = { id: uid(), date: toDayKey(new Date()), routineId, startedAt: Date.now() }; await db.transaction('rw', db.workouts, db.routines, async () => { await db.workouts.add(workout); if (routineId) await db.routines.update(routineId, { lastUsedAt: workout.startedAt }) }); return workout },
-  async cancelWorkout(workoutId) { await ready(); await db.transaction('rw', db.workouts, db.sets, async () => { await db.workouts.delete(workoutId); await db.sets.where('workoutId').equals(workoutId).delete() }) },
-  async finishWorkout(workoutId, notes) { await ready(); const workout = await db.workouts.get(workoutId); if (!workout) throw new Error('workout not found'); const finished: Workout = { ...workout, finishedAt: Date.now(), ...(notes ? { notes } : {}) }; await db.workouts.put(finished); return workoutSummary(finished) },
+  async cancelWorkout(workoutId) { await ready(); await db.transaction('rw', db.workouts, db.sets, db.activities, async () => { await db.workouts.delete(workoutId); await db.sets.where('workoutId').equals(workoutId).delete(); await db.activities.where('workoutId').equals(workoutId).delete() }) },
+  async finishWorkout(workoutId, notes) { await ready(); const workout = await db.workouts.get(workoutId); if (!workout) throw new Error('workout not found'); const finished: Workout = { ...workout, finishedAt: workout.finishedAt ?? Date.now(), ...(notes !== undefined ? { notes } : {}) }; await db.workouts.put(finished); return workoutSummary(finished) },
   async listSets(workoutId) { await ready(); return (await db.sets.where('workoutId').equals(workoutId).toArray()).sort((a, b) => a.loggedAt - b.loggedAt) },
   async logSet(set) {
     await ready()
-    const full: WorkoutSet = { ...set, id: uid(), loggedAt: Date.now() }
+    const exercise = await db.exercises.get(set.exerciseId)
+    const workout = await db.workouts.get(set.workoutId)
+    if (!exercise || !workout || workout.finishedAt) throw new Error('Choose an exercise in an active workout.')
+    const format = exercise.recordingFormat ?? 'weight-reps'
+    if (format !== 'weight-reps' && format !== 'reps') throw new Error('This exercise is logged with time.')
+    if (!Number.isFinite(set.weightLb) || set.weightLb < 0 || !Number.isInteger(set.reps) || set.reps < 1
+      || !Number.isInteger(set.setNumber) || set.setNumber < 1) throw new Error('Enter a valid weight and whole number of reps.')
+    const full: WorkoutSet = { ...set, weightLb: format === 'reps' ? 0 : set.weightLb, recordingFormat: format, id: uid(), loggedAt: Date.now() }
     await db.sets.add(full)
     // a logged set that beats the baseline becomes the new baseline, so
     // "My strength" keeps tracking the user as they get stronger
-    if (full.weightLb > 0 && full.reps > 0) {
+    if (isWeightedSet(full)) {
       const baseline = await db.baselines.get(full.exerciseId)
       if (baseline && epleyMaxLb(full.weightLb, full.reps) > epleyMaxLb(baseline.weightLb, baseline.reps)) {
         await db.baselines.put({ id: full.exerciseId, weightLb: full.weightLb, reps: full.reps, at: full.loggedAt })
@@ -71,11 +121,40 @@ export const api: DataAPI = {
       // inflating weight suggestions after it's removed
       const baseline = await db.baselines.get(set.exerciseId)
       if (!baseline || baseline.weightLb !== set.weightLb || baseline.reps !== set.reps || baseline.at !== set.loggedAt) return
-      const remaining = (await db.sets.where('exerciseId').equals(set.exerciseId).toArray()).filter((other) => other.weightLb > 0 && other.reps > 0)
+      const remaining = (await db.sets.where('exerciseId').equals(set.exerciseId).toArray()).filter(isWeightedSet)
       const best = remaining.sort((a, b) => epleyMaxLb(b.weightLb, b.reps) - epleyMaxLb(a.weightLb, a.reps))[0]
       if (best) await db.baselines.put({ id: set.exerciseId, weightLb: best.weightLb, reps: best.reps, at: best.loggedAt })
       else await db.baselines.delete(set.exerciseId)
     })
+  },
+  async listActivities(workoutId) {
+    await ready()
+    return (await db.activities.where('workoutId').equals(workoutId).toArray()).filter(isActivityLog).sort((a, b) => a.loggedAt - b.loggedAt)
+  },
+  async logActivity(entry) {
+    await ready()
+    return db.transaction('rw', db.activities, db.exercises, db.workouts, async () => {
+      const exercise = await db.exercises.get(entry.exerciseId)
+      const workout = await db.workouts.get(entry.workoutId)
+      if (!exercise || !workout || workout.finishedAt) throw new Error('Choose an exercise in an active workout.')
+      if (exercise.recordingFormat !== entry.recordingFormat) throw new Error('The logging format changed. Reopen the exercise.')
+      const full: ActivityLog = { ...entry, id: uid(), loggedAt: Date.now(), schemaVersion: 1, categories: exerciseCategories(exercise) }
+      if (!isActivityLog(full)) throw new Error('Enter a positive duration and valid optional distance or resistance.')
+      await db.activities.add(full)
+      return full
+    })
+  },
+  async deleteActivity(id) { await ready(); await db.activities.delete(id) },
+  async getPrevActivities(exerciseId, beforeWorkoutId) {
+    await ready()
+    const before = beforeWorkoutId ? await db.workouts.get(beforeWorkoutId) : undefined
+    const workouts = (await db.workouts.toArray()).filter((w) => w.finishedAt && (!before || w.startedAt < before.startedAt)).sort((a, b) => b.startedAt - a.startedAt)
+    const activities = (await db.activities.where('exerciseId').equals(exerciseId).toArray()).filter(isActivityLog)
+    for (const workout of workouts) {
+      const entries = activities.filter((a) => a.workoutId === workout.id).sort((a, b) => a.entryNumber - b.entryNumber)
+      if (entries.length) return entries
+    }
+    return []
   },
   async getPrevPerformance(exerciseId, beforeWorkoutId) { await ready(); const before = beforeWorkoutId ? await db.workouts.get(beforeWorkoutId) : undefined; const candidates = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt) && (!before || workout.startedAt < before.startedAt)).sort((a, b) => b.startedAt - a.startedAt); for (const workout of candidates) { const sets = (await db.sets.where('workoutId').equals(workout.id).toArray()).filter((set) => set.exerciseId === exerciseId).sort((a, b) => a.setNumber - b.setNumber); if (sets.length) { const performance: PrevPerformance = { workoutDate: workout.date, sets: sets.map(({ weightLb, reps }) => ({ weightLb, reps })) }; return performance } } return undefined },
   async listBaselines() { await ready(); return (await db.baselines.toArray()).sort((a, b) => b.at - a.at) },
@@ -186,7 +265,7 @@ export const api: DataAPI = {
   async listTape(limit) { await ready(); const q = db.tape.orderBy('at').reverse(); return limit ? q.limit(limit).toArray() : q.toArray() },
   async addTape(entry) { await ready(); const full: TapeEntry = { ...entry, id: uid() }; await db.tape.add(full); return full },
   async deleteTape(id) { await ready(); await db.tape.delete(id) },
-  async getWeekActivity() { await ready(); const [workouts, routines, sets] = await Promise.all([db.workouts.toArray(), db.routines.toArray(), db.sets.toArray()]); const names = new Map(routines.map((routine) => [routine.id, routine.name])); const days: WeekActivity['days'] = []; for (let offset = 6; offset >= 0; offset -= 1) { const day = new Date(); day.setDate(day.getDate() - offset); const date = toDayKey(day); const workout = workouts.find((candidate) => candidate.date === date && Boolean(candidate.finishedAt)); days.push(workout ? { date, workoutId: workout.id, routineName: workout.routineId ? names.get(workout.routineId) : undefined } : { date }) } const weeklyVolumeLb: number[] = []; for (let week = 5; week >= 0; week -= 1) { const end = Date.now() - week * 7 * 86400_000; const start = end - 7 * 86400_000; weeklyVolumeLb.push(sets.filter((set) => set.loggedAt > start && set.loggedAt <= end).reduce((total, set) => total + set.weightLb * set.reps, 0)) } return { days, weeklyVolumeLb } },
+  async getWeekActivity() { await ready(); const [workouts, routines, sets, activities] = await Promise.all([db.workouts.toArray(), db.routines.toArray(), db.sets.toArray(), db.activities.toArray()]); const names = new Map(routines.map((routine) => [routine.id, routine.name])); const days: WeekActivity['days'] = []; for (let offset = 6; offset >= 0; offset -= 1) { const day = new Date(); day.setDate(day.getDate() - offset); const date = toDayKey(day); const workout = workouts.find((candidate) => candidate.date === date && Boolean(candidate.finishedAt)); days.push(workout ? { date, workoutId: workout.id, routineName: workout.routineId ? names.get(workout.routineId) : undefined } : { date }) } const weeklyVolumeLb: number[] = []; const weeklyCardioMinutes: number[] = []; for (let week = 5; week >= 0; week -= 1) { const end = Date.now() - week * 7 * 86400_000; const start = end - 7 * 86400_000; weeklyVolumeLb.push(sets.filter((set) => set.loggedAt > start && set.loggedAt <= end).reduce((total, set) => total + setVolume(set), 0)); weeklyCardioMinutes.push(activities.filter(isActivityLog).filter((a) => activityIsCardio(a) && a.loggedAt > start && a.loggedAt <= end).reduce((t, a) => t + a.durationSec / 60, 0)) } return { days, weeklyVolumeLb, weeklyCardioMinutes } },
   async getSettings() { await ready(); const settings = await db.settings.get('settings'); if (!settings) throw new Error('settings not found'); const { id: _id, ...publicSettings } = settings; return publicSettings },
   async saveSettings(settings) { await ready(); await db.settings.put({ id: 'settings', ...settings }) },
 }

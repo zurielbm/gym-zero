@@ -5,6 +5,18 @@ export type MuscleGroup =
   | 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps'
   | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'core' | 'hips'
 
+export const ACTIVITY_CATEGORIES = ['strength', 'cardio', 'mobility'] as const
+export type ActivityCategory = typeof ACTIVITY_CATEGORIES[number]
+export const RECORDING_FORMATS = ['weight-reps', 'reps', 'duration', 'duration-distance', 'timed-sets'] as const
+export type RecordingFormat = typeof RECORDING_FORMATS[number]
+export const MUSCLE_GROUPS: MuscleGroup[] = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core', 'hips']
+export const recordingFormat = (exercise?: Exercise): RecordingFormat => exercise?.recordingFormat ?? 'weight-reps'
+export const isTimedExercise = (exercise?: Exercise): boolean => ['duration', 'duration-distance', 'timed-sets'].includes(recordingFormat(exercise))
+export const FORMAT_LABELS: Record<RecordingFormat, string> = {
+  'weight-reps': 'Weight & reps', reps: 'Reps', duration: 'Time',
+  'duration-distance': 'Time & distance', 'timed-sets': 'Timed sets',
+}
+
 export type EquipmentKind = 'machine' | 'cable' | 'free' | 'bodyweight'
 
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -17,6 +29,14 @@ export interface Exercise {
   name: string
   muscleGroups: MuscleGroup[]
   equipment: EquipmentKind
+  /** Optional fields preserve legacy records without inferring muscle roles. */
+  categories?: ActivityCategory[]
+  primaryCategory?: ActivityCategory
+  primaryMuscles?: MuscleGroup[]
+  supportingMuscles?: MuscleGroup[]
+  recordingFormat?: RecordingFormat
+  aliases?: string[]
+  custom?: boolean
 }
 
 /** Shared knowledge about a manufacturer machine model (e.g. Life Fitness Seated Leg Press). */
@@ -74,6 +94,8 @@ export interface RoutineItem {
   exerciseId: string
   targetSets: number
   targetReps?: number
+  targetDurationSec?: number
+  targetDistanceMiles?: number
 }
 
 export interface Routine {
@@ -102,6 +124,24 @@ export interface WorkoutSet {
   weightLb: number
   reps: number
   setNumber: number
+  loggedAt: number
+  recordingFormat?: 'weight-reps' | 'reps'
+}
+
+/** Timed work is separate from legacy lifting sets so older clients cannot count it as lifting. */
+export interface ActivityLog {
+  id: string
+  schemaVersion: 1
+  workoutId: string
+  exerciseId: string
+  machineId?: string
+  recordingFormat: 'duration' | 'duration-distance' | 'timed-sets'
+  /** Snapshot: later exercise edits do not reclassify logged activity. */
+  categories: ActivityCategory[]
+  durationSec: number
+  distanceMiles?: number
+  resistance?: number
+  entryNumber: number
   loggedAt: number
 }
 
@@ -327,6 +367,10 @@ export interface WorkoutSummary {
   durationSec: number
   totalVolumeLb: number
   setCount: number
+  activityCount: number
+  timedDurationSec: number
+  cardioDurationSec: number
+  distanceMiles: number
   /** exercise ids where max weight (or reps at same weight) beat all history */
   prs: Array<{ exerciseId: string; weightLb: number; reps: number }>
 }
@@ -349,6 +393,7 @@ export interface WeekActivity {
   days: Array<{ date: DayKey; workoutId?: string; routineName?: string }>
   /** total volume per ISO week, oldest first, up to 6 weeks */
   weeklyVolumeLb: number[]
+  weeklyCardioMinutes: number[]
 }
 
 /**
@@ -382,6 +427,10 @@ export interface DataAPI {
   // exercises & machines
   listExercises(): Promise<Exercise[]>
   getExercise(id: string): Promise<Exercise | undefined>
+  /** New names deduplicate before creation; existing IDs are updated in place. */
+  saveExercise(exercise: Omit<Exercise, 'id'> & { id?: string }): Promise<Exercise>
+  /** Only unused personal exercises may be deleted. Referenced history is preserved. */
+  deleteExercise(id: string): Promise<void>
   listMachines(): Promise<GymMachine[]>
   getMachine(id: string): Promise<GymMachine | undefined>
   saveMachine(m: GymMachine): Promise<void>
@@ -405,6 +454,10 @@ export interface DataAPI {
   listSets(workoutId: string): Promise<WorkoutSet[]>
   logSet(s: Omit<WorkoutSet, 'id' | 'loggedAt'>): Promise<WorkoutSet>
   deleteSet(id: string): Promise<void>
+  listActivities(workoutId: string): Promise<ActivityLog[]>
+  logActivity(entry: Omit<ActivityLog, 'id' | 'loggedAt' | 'schemaVersion' | 'categories'>): Promise<ActivityLog>
+  deleteActivity(id: string): Promise<void>
+  getPrevActivities(exerciseId: string, beforeWorkoutId?: string): Promise<ActivityLog[]>
   getPrevPerformance(exerciseId: string, beforeWorkoutId?: string): Promise<PrevPerformance | undefined>
   listBaselines(): Promise<StrengthBaseline[]>
   getBaseline(exerciseId: string): Promise<StrengthBaseline | undefined>

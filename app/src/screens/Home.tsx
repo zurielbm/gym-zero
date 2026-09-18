@@ -138,6 +138,7 @@ export function HomeScreen() {
                 <span><span className="num" style={{ fontSize: '1.35rem' }}>{Math.round(last.totalVolumeLb).toLocaleString()}</span><span className="lab">Lb vol</span></span>
                 <span><span className="num" style={{ fontSize: '1.35rem' }}>{Math.max(1, Math.round(last.durationSec / 60))}</span><span className="lab">Min</span></span>
               </div>
+              {last.activityCount > 0 && <p className="small">{Number((last.timedDurationSec / 60).toFixed(1))} min timed activity · {last.activityCount} entries</p>}
               {last.prs.length > 0 && (
                 <div>
                   {last.prs.map((pr) => (

@@ -1,0 +1,68 @@
+/* ============================================================
+   Exercise review — the confirm step before anything is saved.
+   Tokens come from styles.css; every tappable thing is >= 44px.
+   ============================================================ */
+
+.xr { border-top: 1px solid var(--hairline); margin-top: 12px; padding-top: 12px; }
+
+.xr-badges { display: flex; flex-wrap: wrap; gap: 0; margin: 8px 0 2px; }
+/* equipment recognition and catalog fit are two different claims — never merged */
+.xr-badges .chip { margin: 0 6px 6px 0; }
+
+.xr-head { display: block; margin: 14px 0 6px; }
+.xr-note { margin: 0 0 8px; }
+.xr-clamp {
+  margin: 0 0 4px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
+
+/* ---- option rows (matches, custom suggestion, catalog) ---- */
+.xr-option {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  min-height: 56px; padding: 11px 13px; margin-bottom: 8px;
+  background: var(--panel); border: 1px solid var(--panel-line); border-radius: 2px;
+  color: var(--ink); transition: border-color 0.12s;
+}
+.xr-option:active { border-color: var(--lime); }
+.xr-option:disabled { opacity: 0.35; cursor: default; }
+.xr-option b { display: block; font-size: 0.88rem; }
+.xr-option-sub {
+  display: block; margin-top: 2px; font-size: 0.72rem; color: var(--muted);
+  text-transform: capitalize;
+}
+.xr-reason { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--lime); }
+
+.xr-manual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 14px; }
+.xr-browse { margin-top: 12px; }
+.xr-list { max-height: 340px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ---- editing ---- */
+.xr-chips { display: flex; flex-wrap: wrap; margin-bottom: 4px; }
+.xr-chips .chip.btn { min-height: 44px; }
+.xr-cap { text-transform: capitalize; }
+
+.xr-disclose {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; min-height: 44px; padding: 10px 12px; cursor: pointer;
+  background: var(--track); border: 1px solid var(--edge); border-radius: 2px; color: var(--ink);
+}
+.xr-disclose:disabled { opacity: 0.35; cursor: default; }
+.xr-disclose .lab { margin: 0; }
+
+.xr-inline-btn { margin-top: 8px; }
+.xr-ask { display: block; margin-top: 4px; color: var(--lime); }
+.xr-next { margin: 14px 0 10px; }
+.xr-error { display: block; color: var(--danger); margin-bottom: 10px; }
+
+@media (hover: hover) {
+  .xr-option:not(:disabled):hover { border-color: var(--lime); }
+  .xr-disclose:not(:disabled):hover { border-color: var(--ghost); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xr-option { transition: none; }
+}
+
+.xr .seg button, .xr .back-link { min-height: 44px; }
+.xr .seg button { flex: 1 1 90px; }
+.xr button:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }

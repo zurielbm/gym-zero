@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
-import type { AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
-import { machineSupportsExercise } from '../types'
+import type { ActivityLog, AiProgram, GymMachine, PrevPerformance, Routine, StrengthBaseline, WorkoutSet } from '../types'
+import { isTimedExercise, recordingFormat, machineSupportsExercise } from '../types'
+
+import { ActivityLogger } from '../components/ActivityLogger'
 
 interface Draft { w: string; r: string }
 
 export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initialExerciseId?: string; initialMachineId?: string }) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
   const [routine, setRoutine] = useState<Routine | null>(null)
+  const [activities, setActivities] = useState<ActivityLog[]>([])
+  const [saving, setSaving] = useState(false)
+  const saveLock = useRef(false)
+  const [error, setError] = useState('')
   const [sets, setSets] = useState<WorkoutSet[]>([])
   const [currentId, setCurrentId] = useState<string | undefined>(initialExerciseId)
   const [selectedMachineId, setSelectedMachineId] = useState<string | undefined>(initialMachineId)
@@ -31,10 +37,12 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
       api.listSets(workout.id),
       api.listMachines(),
       api.listBaselines(),
-    ]).then(([r, ss, ms, bs]) => {
+      api.listActivities(workout.id),
+    ]).then(([r, ss, ms, bs, aa]) => {
       if (!alive) return
       setRoutine(r)
       setSets(ss)
+      setActivities(aa)
       setMachines(ms)
       setBaselines(new Map(bs.map((b) => [b.id, b])))
       setCurrentId((cur) => {
@@ -42,11 +50,11 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         // first exercise with unfinished target sets, else first item, else first logged
         if (r) {
           const open = r.items.find(
-            (it) => ss.filter((s) => s.exerciseId === it.exerciseId).length < it.targetSets,
+            (it) => [...ss, ...aa].filter((s) => s.exerciseId === it.exerciseId).length < it.targetSets,
           )
           return (open ?? r.items[0])?.exerciseId
         }
-        return ss[0]?.exerciseId
+        return ss[0]?.exerciseId ?? aa[0]?.exerciseId
       })
     })
     return () => { alive = false }
@@ -100,10 +108,16 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   // exercise list: routine order, plus anything logged outside the routine (e.g. scanned machine)
   const exerciseIds = useMemo(() => {
     const ids = routine ? routine.items.map((i) => i.exerciseId) : []
-    for (const s of sets) if (!ids.includes(s.exerciseId)) ids.push(s.exerciseId)
+    for (const s of [...sets, ...activities]) if (!ids.includes(s.exerciseId)) ids.push(s.exerciseId)
     if (currentId && !ids.includes(currentId)) ids.push(currentId)
     return ids
-  }, [routine, sets, currentId])
+  }, [routine, sets, activities, currentId])
+
+  useEffect(() => () => { if (disarmTimer.current) clearTimeout(disarmTimer.current) }, [])
+
+  const currentExercise = currentId ? exercises.get(currentId) : undefined
+  const timed = isTimedExercise(currentExercise)
+  const repsOnly = recordingFormat(currentExercise) === 'reps'
 
   if (!workout) {
     return (
@@ -116,7 +130,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const targetSets = (exerciseId: string) =>
-    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? (exerciseId === currentId ? program?.sets : undefined) ?? 3
+    routine?.items.find((i) => i.exerciseId === exerciseId)?.targetSets ?? (exerciseId === currentId && recordingFormat(exercises.get(exerciseId)) === 'weight-reps' ? program?.sets : undefined) ?? (isTimedExercise(exercises.get(exerciseId)) && recordingFormat(exercises.get(exerciseId)) !== 'timed-sets' ? 1 : 3)
 
   const logged = sets
     .filter((s) => s.exerciseId === currentId)
@@ -124,8 +138,8 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const perf = currentId ? prev[currentId] : undefined
   // fallbacks only fill the gap until real history exists — history always wins,
   // then the self-reported baseline, then the AI target
-  const progTarget = currentId && !perf ? program : undefined
-  const baseline = currentId && !perf ? baselines.get(currentId) : undefined
+  const progTarget = currentId && !perf && !timed && !repsOnly ? program : undefined
+  const baseline = currentId && !perf && !timed && !repsOnly ? baselines.get(currentId) : undefined
   const rowCount = currentId ? Math.max(targetSets(currentId), logged.length + 1) : 0
 
   const defaultFor = (i: number): Draft => {
@@ -134,30 +148,34 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
     const fromPrev = perf?.sets[i] ?? perf?.sets[perf.sets.length - 1]
     const before = logged[i - 1]
     const w = fromPrev?.weightLb ?? before?.weightLb ?? baseline?.weightLb ?? progTarget?.startWeightLb
-    const r = fromPrev?.reps ?? before?.reps ?? baseline?.reps ?? progTarget?.reps
+    const r = fromPrev?.reps ?? before?.reps ?? routine?.items.find((item) => item.exerciseId === currentId)?.targetReps ?? baseline?.reps ?? progTarget?.reps
     return { w: w != null ? String(w) : '', r: r != null ? String(r) : '' }
   }
 
   const logRow = async (i: number) => {
-    if (!currentId) return
+    if (!currentId || saving || saveLock.current) return
     const d = defaultFor(i)
-    const weightLb = parseFloat(d.w)
-    const reps = parseInt(d.r, 10)
-    if (!isFinite(weightLb) || !isFinite(reps) || reps <= 0) return
-    const machine = machines.find((candidate) =>
-      candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
-    )
-    const saved = await api.logSet({
-      workoutId: workout.id,
-      exerciseId: currentId,
-      machineId: machine?.id,
-      weightLb,
-      reps,
-      setNumber: i + 1,
-    })
-    setSets((old) => [...old, saved])
-    setDrafts((old) => { const n = { ...old }; delete n[i]; return n })
-    startRest(progTarget?.restSeconds)
+    const weightLb = repsOnly ? 0 : Number(d.w)
+    const reps = Number(d.r)
+    if ((!repsOnly && !d.w.trim()) || !isFinite(weightLb) || weightLb < 0 || !Number.isInteger(reps) || reps <= 0) { setError('Enter a valid weight and whole number of reps.'); return }
+    saveLock.current = true; setSaving(true); setError('')
+    try {
+      const machine = machines.find((candidate) =>
+        candidate.id === selectedMachineId && machineSupportsExercise(candidate, currentId),
+      )
+      const saved = await api.logSet({
+        workoutId: workout.id,
+        exerciseId: currentId,
+        machineId: machine?.id,
+        weightLb,
+        reps,
+        setNumber: i + 1,
+      })
+      setSets((old) => [...old, saved])
+      setDrafts((old) => { const n = { ...old }; delete n[i]; return n })
+      startRest(progTarget?.restSeconds)
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const disarm = () => {
@@ -173,14 +191,20 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const deleteRow = async (s: WorkoutSet) => {
+    if (saveLock.current || saving) return
+    saveLock.current = true; setSaving(true); setError('')
     disarm()
-    await api.deleteSet(s.id)
-    setSets((old) => old.filter((other) => other.id !== s.id))
-    // the delete may have rolled the baseline back — re-read so suggestions stay honest
-    setBaselines(new Map((await api.listBaselines()).map((b) => [b.id, b])))
+    try {
+      await api.deleteSet(s.id)
+      setSets((old) => old.filter((other) => other.id !== s.id))
+      // the delete may have rolled the baseline back — re-read so suggestions stay honest
+      setBaselines(new Map((await api.listBaselines()).map((b) => [b.id, b])))
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const switchExercise = (id: string) => {
+    if (saving || saveLock.current) return
     setCurrentId(id)
     setProgram(undefined)
     setDrafts({})
@@ -188,13 +212,18 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   }
 
   const finish = async () => {
-    const summary = await api.finishWorkout(workout.id)
-    setActiveWorkout(undefined)
-    go({ name: 'summary', workoutId: summary.workout.id })
+    if (saving || saveLock.current) return
+    saveLock.current = true; setSaving(true); setError('')
+    try {
+      const summary = await api.finishWorkout(workout.id)
+      setActiveWorkout(undefined)
+      go({ name: 'summary', workoutId: summary.workout.id })
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { saveLock.current = false; setSaving(false) }
   }
 
   const cancel = async () => {
-    if (!confirm('Discard this workout and all its sets?')) return
+    if (saving || !confirm('Discard this workout and all its logged entries?')) return
     await api.cancelWorkout(workout.id)
     setActiveWorkout(undefined)
     go({ name: 'routines' })
@@ -212,7 +241,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
       <div className="row" style={{ marginBottom: 8 }}>
         <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'routines' })}>
           ‹ {routine ? `${routine.emoji ?? ''} ${routine.name}`.trim() : 'Workout'}
-          {routine && ` · ${exerciseIds.filter((id) => sets.some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
+          {routine && ` · ${exerciseIds.filter((id) => [...sets, ...activities].some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
         </button>
         <span className="num" style={{ fontSize: '1.2rem', color: 'var(--lime)', margin: 0 }}>{elapsed}</span>
       </div>
@@ -250,9 +279,16 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
             </div>
           )}
 
-          {currentId && (
+          {error && <p role="alert" className="small" style={{ color: 'var(--danger)' }}>{error}</p>}
+          {currentId && timed && currentExercise && <ActivityLogger key={currentId}
+            exercise={currentExercise} workoutId={workout.id} machineId={selectedMachineId}
+            entries={activities.filter((a) => a.exerciseId === currentId)}
+            target={routine?.items.find((i) => i.exerciseId === currentId)}
+            onBusyChange={setSaving}
+            onChange={(entries) => setActivities((all) => [...all.filter((a) => a.exerciseId !== currentId), ...entries])} />}
+          {currentId && !timed && (
             <div className="card">
-              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>lb</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
+              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>{repsOnly ? 'Bodyweight' : 'lb'}</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
               {Array.from({ length: rowCount }, (_, i) => {
                 const done = logged[i]
                 const prevHint = perf?.sets[i]
@@ -261,12 +297,13 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     <div className="set-row" key={i}>
                       <b>{i + 1}</b>
                       <div>
-                        <div className="logged-val">{done.weightLb}</div>
+                        <div className="logged-val">{done.recordingFormat === 'reps' ? '—' : done.weightLb}</div>
                         {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
                       </div>
                       <div className="logged-val">{done.reps}</div>
                       <button
                         className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
+                        disabled={saving}
                         title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
                         onClick={() => (armedId === done.id ? void deleteRow(done) : armDelete(done.id))}
                       >
@@ -283,7 +320,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     <div>
                       <input
                         className={`set-in${isNext ? '' : ' pending'}`}
-                        inputMode="decimal" value={d.w} placeholder="lb"
+                        inputMode="decimal" value={repsOnly ? '—' : d.w} placeholder="lb" disabled={repsOnly || saving} aria-label="Weight in pounds"
                         onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, w: e.target.value } }))}
                       />
                       {prevHint
@@ -298,20 +335,20 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
                     </div>
                     <input
                       className={`set-in${isNext ? '' : ' pending'}`}
-                      inputMode="numeric" value={d.r} placeholder="reps"
+                      inputMode="numeric" value={d.r} placeholder="reps" disabled={saving} aria-label="Reps"
                       onChange={(e) => setDrafts((old) => ({ ...old, [i]: { ...d, r: e.target.value } }))}
                     />
-                    <button className="set-done-btn" disabled={!isNext} onClick={() => logRow(i)}>✓</button>
+                    <button className="set-done-btn" disabled={!isNext || saving} onClick={() => logRow(i)}>✓</button>
                   </div>
                 )
               })}
             </div>
           )}
 
-          {perf && (
+          {perf && !timed && (
             <p className="lab" style={{ margin: '0 0 12px' }}>
               Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
-              {perf.sets.map((s) => `${s.weightLb}×${s.reps}`).join(' · ')}
+              {perf.sets.map((s) => repsOnly ? `${s.reps} reps` : `${s.weightLb}×${s.reps}`).join(' · ')}
             </p>
           )}
         </div>
@@ -319,7 +356,7 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         <div className="side">
           <p className="section-label" style={{ marginTop: 16 }}>Queue</p>
           {exerciseIds.map((id) => {
-            const count = sets.filter((s) => s.exerciseId === id).length
+            const count = [...sets, ...activities].filter((s) => s.exerciseId === id).length
             const target = targetSets(id)
             return (
               <div
@@ -329,18 +366,25 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
               >
                 <div className="row">
                   <b>{exercises.get(id)?.name ?? id}</b>
-                  <span className="small">{count}/{target} sets</span>
+                  <span className="small">{count}/{target} {isTimedExercise(exercises.get(id)) && recordingFormat(exercises.get(id)) !== 'timed-sets' ? 'entries' : 'sets'}</span>
                 </div>
               </div>
             )
           })}
 
+          <div className="field" style={{ marginTop: 14 }}>
+            <label htmlFor="workout-add-exercise">Choose an exercise</label>
+            <select id="workout-add-exercise" className="text-in" value="" disabled={saving} onChange={(e) => switchExercise(e.target.value)}>
+              <option value="">Add or switch exercise…</option>
+              {[...exercises.values()].sort((a, b) => a.name.localeCompare(b.name)).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
           <div style={{ height: 14 }} />
-          <button className="big-btn blue" onClick={finish} disabled={sets.length === 0}>
+          <button className="big-btn blue" onClick={finish} disabled={saving || (sets.length === 0 && activities.length === 0)}>
             Finish workout →
           </button>
           <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" onClick={cancel}>Discard workout</button>
+          <button className="ghost-btn danger" disabled={saving} onClick={cancel}>Discard workout</button>
         </div>
       </div>
     </div>

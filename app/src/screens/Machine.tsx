@@ -4,7 +4,7 @@ import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
 import type { AiProgram, EquipmentModel, Exercise, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
-import { epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
+import { isTimedExercise, recordingFormat, epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
 
 interface ExercisePickerProps {
   value: string[]
@@ -173,7 +173,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
   const generateProgram = async (m: GymMachine, exerciseId: string, override?: Partial<Settings>) => {
     const config = aiConfig(settings)
     const exercise = exercises.get(exerciseId)
-    if (!config || !exercise) return
+    if (!config || !exercise || recordingFormat(exercise) !== 'weight-reps') return
     setProgBusy(true)
     setProgError(null)
     try {
@@ -295,6 +295,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
     ? selectedExerciseId
     : supportedExerciseIds[0] ?? machine.exerciseId
   const ex = exercises.get(currentExerciseId)
+  const weighted = recordingFormat(ex) === 'weight-reps'
   const patch = async (p: Partial<GymMachine>) => {
     const next = normalizeMachineExercises({ ...machine, ...p })
     setMachine(next)
@@ -417,7 +418,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
 
       {aiGuide}
 
-      {program ? (
+      {weighted && (program ? (
         <div className="card">
           <div className="row">
             <span className="lab lm">✦ Your starter program</span>
@@ -486,10 +487,10 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
           )}
           <div style={{ height: 10 }} />
         </>
-      )}
+      ))}
       {progError && <span className="small" style={{ color: 'var(--danger)', display: 'block', marginBottom: 8 }}>{progError}</span>}
 
-      {!perf && (
+      {weighted && !perf && (
         <div className="card">
           <div className="row">
             <span className="lab lm">I know my weight</span>
@@ -593,7 +594,7 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         </div>
       )}
 
-      <button className="big-btn" onClick={logSets}>Log {ex?.name ?? 'exercise'} sets →</button>
+      <button className="big-btn" onClick={logSets}>Log {ex?.name ?? 'exercise'}{isTimedExercise(ex) ? ' time' : ' sets'} →</button>
     </div>
   )
 }

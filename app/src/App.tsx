@@ -75,12 +75,16 @@ export default function App() {
     setSettings(await api.getSettings())
   }, [])
 
+  const refreshExercises = useCallback(async () => {
+    setExercises(new Map((await api.listExercises()).map((exercise) => [exercise.id, exercise])))
+  }, [])
+
   // pulled sync records land in Dexie behind React's back; re-read shared state
   useEffect(() => {
-    const onApplied = () => { void refreshSettings() }
+    const onApplied = () => { void refreshSettings(); void refreshExercises() }
     window.addEventListener(SYNC_APPLIED_EVENT, onApplied)
     return () => window.removeEventListener(SYNC_APPLIED_EVENT, onApplied)
-  }, [refreshSettings])
+  }, [refreshSettings, refreshExercises])
 
   if (!settings || !exercises) {
     return <div className="shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -92,7 +96,7 @@ export default function App() {
     <Ctx.Provider
       value={{
         api, go, screen, settings, refreshSettings,
-        activeWorkout, setActiveWorkout, exercises, startRest,
+        activeWorkout, setActiveWorkout, exercises, refreshExercises, startRest,
       }}
     >
       <div className="shell">
