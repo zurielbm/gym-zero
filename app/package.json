@@ -17,7 +17,8 @@
     "e2e:qol": "node e2e/quality-of-life.mjs",
     "e2e:machine-ai": "node e2e/machine-ai.mjs",
     "e2e:machine-muscles": "node e2e/machine-muscles.mjs",
-    "e2e:rest-edits": "node e2e/rest-edits.mjs"
+    "e2e:rest-edits": "node e2e/rest-edits.mjs",
+    "test:exercise-photo": "node e2e/exercise-photo-ai.mjs"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.12.5",
