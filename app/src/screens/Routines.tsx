@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAction } from '../components/Feedback'
 import { useApp } from '../AppContext'
+import { GearIcon } from '../components/icons'
 import type { Routine } from '../types'
 
 function relativeDay(ts?: number) {
@@ -32,63 +33,76 @@ export function RoutinesScreen() {
 
   return (
     <div className="page">
-      <button className="back-link" onClick={() => go({ name: 'home' })}>‹ Home</button>
-      <h1 className="p-h1">Choose routine<span className="dot">.</span></h1>
-      <p className="p-sub">Previous weights load automatically</p>
+      <div className="row">
+        <h1 className="p-h1">Train<span className="dot">.</span></h1>
+        <button className="icon-btn" title="Settings" aria-label="Settings" onClick={() => go({ name: 'settings' })}><GearIcon /></button>
+      </div>
+      <p className="p-sub">Choose routine · previous weights load automatically</p>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="ghost-btn" style={{ flex: 1 }} aria-label="＋ Start empty workout"
+          disabled={action.busy}
+          onClick={() => void action.run(async () => {
+            // freestyle session without a routine
+            const w = await api.startWorkout()
+            setActiveWorkout(w)
+            go({ name: 'workout' })
+          })}
+        >
+          ＋ Empty workout
+        </button>
+        <button className="ghost-btn" style={{ flex: 1 }} onClick={() => go({ name: 'routine-edit' })}>
+          ＋ New routine
+        </button>
+      </div>
 
       {activeWorkout && (
-        <button className="big-btn" style={{ marginBottom: 16 }} onClick={() => go({ name: 'workout' })}>
-          Resume current workout →
-        </button>
+        <div className="card" style={{ borderColor: 'var(--lime)', background: 'var(--lime-dim)' }}>
+          <div className="row">
+            <div>
+              <span className="lab lm">In progress</span>
+              <p className="t" style={{ fontSize: '0.95rem', margin: '2px 0 0' }}>Your workout is still open</p>
+              <p className="small" style={{ margin: '2px 0 0', fontSize: '0.76rem' }}>Starting a routine resumes it. Finish or discard it first to start another.</p>
+            </div>
+            <button className="big-btn" style={{ width: 'auto', minHeight: 38, fontSize: '0.82rem' }} onClick={() => go({ name: 'workout' })}>
+              Resume
+            </button>
+          </div>
+        </div>
       )}
 
-      {activeWorkout && <p className="small">Your workout is still in progress. Starting a routine resumes that session; finish or discard it before starting another.</p>}
-      {ordered.map((r) => (
-        <div key={r.id} className="card routine-card">
-          <button className="routine-open" disabled={action.busy} onClick={() => void action.run(() => start(r))}>
-          <div className="row">
-            <b style={{ fontSize: '1rem' }}>{r.emoji ? `${r.emoji} ` : ''}{r.name}</b>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {r.id === upNextId && <span className="chip solid" style={{ margin: 0 }}>Up next</span>}
-
-            </span>
+      <p className="section-label">My routines</p>
+      {ordered.map((r) => {
+        const isNext = r.id === upNextId
+        return (
+          <div key={r.id} className="card routine-card">
+            <button className="routine-open" disabled={action.busy} onClick={() => void action.run(() => start(r))}>
+              <p className="t">{r.emoji ? `${r.emoji} ` : ''}{r.name}</p>
+              <p className="small" style={{ margin: '4px 0 0' }}>
+                {r.items.map((i) => exercises.get(i.exerciseId)?.name ?? i.exerciseId).join(' · ')}
+              </p>
+              <div className="row" style={{ margin: '10px 0 12px' }}>
+                <span className="lab">{r.items.length} exercises · last {relativeDay(r.lastUsedAt)}</span>
+                {isNext && <span className="chip solid" style={{ margin: 0, fontSize: '0.62rem', padding: '3px 9px' }}>Up next</span>}
+              </div>
+            </button>
+            <button
+              className="icon-btn routine-edit" title="Edit routine" aria-label={`Edit ${r.name} routine`}
+              onClick={() => go({ name: 'routine-edit', routineId: r.id })}
+            >
+              ⋯
+            </button>
+            <button
+              className={isNext ? 'big-btn' : 'ghost-btn'} disabled={action.busy}
+              aria-label={`Start ${r.name} routine`}
+              onClick={() => void action.run(() => start(r))}
+            >
+              Start routine
+            </button>
           </div>
-          <span className="small" style={{ display: 'block', margin: '4px 0 6px' }}>
-            {r.items.map((i) => exercises.get(i.exerciseId)?.name ?? i.exerciseId).join(' · ')}
-          </span>
-          <div className="row">
-            <span className="lab">{r.items.length} exercises</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="lab">Last · {relativeDay(r.lastUsedAt)}</span>
-              <span className="chev">›</span>
-            </span>
-          </div>
-          </button>
-              <button
-                className="icon-btn routine-edit" title="Edit routine" aria-label={`Edit ${r.name} routine`} style={{ fontSize: '0.9rem' }}
-                onClick={(e) => { e.stopPropagation(); go({ name: 'routine-edit', routineId: r.id }) }}
-              >
-                ✎
-              </button>
-        </div>
-      ))}
-
-      <button className="ghost-btn" style={{ marginTop: 10 }} onClick={() => go({ name: 'routine-edit' })}>
-        ＋ New routine
-      </button>
-      <button
-        className="ghost-btn"
-        style={{ marginTop: 8 }}
-        disabled={action.busy}
-        onClick={() => void action.run(async () => {
-          // freestyle session without a routine
-          const w = await api.startWorkout()
-          setActiveWorkout(w)
-          go({ name: 'workout' })
-        })}
-      >
-        ＋ Start empty workout
-      </button>
+        )
+      })}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useAiTask } from '../hooks/useAiTask'
 import { addFoods, deleteFoodWithUndo } from '../data/food-actions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../AppContext'
+import { Ring } from '../components/Ring'
 import { HydrationCard } from '../components/HydrationCard'
 import { aiConfig, parseFood, parseFoodPhoto, useAiAvailable, type AiFoodItem, type AiFoodRequest, type AiFoodResult } from '../lib/ai'
 import { downscalePhoto } from '../lib/image'
@@ -358,44 +359,53 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
     void refresh()
   }
 
-  const calPct = Math.min(100, (stats.calories / settings.calorieTarget) * 100)
-  const proPct = Math.min(100, (stats.protein / settings.proteinTarget) * 100)
+  const kcalLeft = Math.max(0, settings.calorieTarget - stats.calories)
+  const openComposer = (meal?: MealSlot) => {
+    if (meal) setForm((f) => ({ ...f, meal }))
+    setShowAdd(true)
+    composerRef.current?.scrollIntoView({ block: 'start' })
+  }
 
   return (
     <div className="page wide">
       <div className="row">
-        <span className="lab">
-          {new Intl.DateTimeFormat('en-US', { weekday: 'short', month: '2-digit', day: '2-digit' }).format(new Date())}
-        </span>
+        <div>
+          <span className="lab">
+            {new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())}
+          </span>
+          <h1 className="p-h1">Fuel<span className="dot">.</span></h1>
+        </div>
       </div>
-      <h1 className="p-h1" style={{ margin: '8px 0 2px' }}>Fuel<span className="dot">.</span></h1>
+
+      <div className="card lg">
+        <div className="fuel-summary">
+          <div><div className="num">{stats.calories.toLocaleString()}</div><div className="lab">Eaten</div></div>
+          <Ring value={stats.calories} target={settings.calorieTarget} size="big" label={`${stats.calories} of ${settings.calorieTarget} calories`}>
+            {kcalLeft.toLocaleString()}<small>left</small>
+          </Ring>
+          <div><div className="num">{settings.calorieTarget.toLocaleString()}</div><div className="lab">Target</div></div>
+        </div>
+        <div className="macro-triad">
+          <div>
+            <div className="row"><span className="lab">Protein</span><span className="small">{stats.protein}/{settings.proteinTarget}</span></div>
+            <div className="bar"><i className="alt" style={{ width: `${Math.min(100, (stats.protein / settings.proteinTarget) * 100)}%` }} /></div>
+          </div>
+          <div>
+            <div className="row"><span className="lab">Carbs</span><span className="small">{stats.carbs} g</span></div>
+            <div className="bar"><i className="carb" style={{ width: `${Math.min(100, (stats.carbs / Math.max(1, settings.calorieTarget / 8)) * 100)}%` }} /></div>
+          </div>
+          <div>
+            <div className="row"><span className="lab">Fat</span><span className="small">{stats.fat} g</span></div>
+            <div className="bar"><i className="fat" style={{ width: `${Math.min(100, (stats.fat / Math.max(1, settings.calorieTarget / 30)) * 100)}%` }} /></div>
+          </div>
+        </div>
+      </div>
 
       <div className="food-actions">
-        <button className="big-btn" onClick={() => { setShowAdd(true); composerRef.current?.scrollIntoView({ block: 'start' }) }}>＋ Log food</button>
+        <button className="big-btn" onClick={() => openComposer()}>＋ Log food</button>
         <button className="ghost-btn" onClick={() => go({ name: 'scan' })}>Scan barcode</button>
       </div>
-      <div className="macro-row">
-        <span className="lab">Calories</span>
-        <span className="num">
-          {stats.calories.toLocaleString()}
-          <span className="of"> / {settings.calorieTarget.toLocaleString()} kcal</span>
-        </span>
-      </div>
-      <div className="bar"><i style={{ width: `${calPct}%` }} /></div>
-      <div className="macro-row">
-        <span className="lab">Protein</span>
-        <span className="num">
-          {stats.protein}
-          <span className="of"> / {settings.proteinTarget} g</span>
-        </span>
-      </div>
-      <div className="bar"><i className="alt" style={{ width: `${proPct}%` }} /></div>
-      <p className="small macro-context">{stats.carbs}g carbs · {stats.fat}g fat <span>{Math.max(0, settings.calorieTarget - stats.calories).toLocaleString()} kcal to target</span></p>
 
-      <div style={{ height: 18 }} />
-      <HydrationCard onFoodChanged={() => void refresh()} />
-
-      <div style={{ height: 12 }} />
       <div className="fd-grid">
         <div>
           {slots.map((slot) => {
@@ -404,9 +414,12 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
             const kcal = list.reduce((t, e) => t + e.calories, 0)
             return (
               <div key={slot} className="card">
-                <div className="row">
-                  <span className="lab">{slotLabel[slot]}</span>
-                  <span className="lab">{kcal} kcal</span>
+                <div className="row" style={{ marginBottom: 6 }}>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>{slotLabel[slot]}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="small">{kcal} kcal</span>
+                    <button className="plus-btn" aria-label={`Add to ${slotLabel[slot]}`} title={`Add to ${slotLabel[slot]}`} onClick={() => openComposer(slot)}>+</button>
+                  </span>
                 </div>
                 {list.map((e) => (
                   editingId === e.id ? (
@@ -438,11 +451,16 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
           })}
           {entries.length === 0 && (
             <div className="card">
-              <span className="num" style={{ fontSize: '2.4rem', WebkitTextStroke: '1px var(--ghost)', color: 'transparent', display: 'block' }}>00</span>
-              <span className="lab" style={{ display: 'block', marginTop: 4 }}>Nothing logged yet</span>
-              <span className="small">Today's meals build here.</span>
+              <div className="row">
+                <div>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>Nothing logged yet</span>
+                  <span className="small" style={{ display: 'block' }}>Today's meals build here.</span>
+                </div>
+                <button className="plus-btn" aria-label="Log food" onClick={() => openComposer()}>+</button>
+              </div>
             </div>
           )}
+          <HydrationCard onFoodChanged={() => void refresh()} />
         </div>
 
         <div className="fd-side" ref={composerRef}>
@@ -627,14 +645,14 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
               <button className="text-button" disabled={aiBusy || action.busy} onClick={() => setShowAdd(false)}>Close — keep draft</button>
             </div>
           ) : (
-            <button className="ghost-btn" onClick={() => setShowAdd(true)}>
+            <button className="ghost-btn" onClick={() => openComposer()}>
               ＋ Quick add (name · kcal · macros)
             </button>
           )}
           {grabbable.length > 0 && (
             <>
               <p className="section-label">Grab again — recent, same portion</p>
-              <div style={{ marginBottom: 10 }}>
+              <div className="chips">
                 {grabbable.map((e) => (
                   <button key={e.id} type="button" className="chip btn" disabled={action.busy} onClick={() => void action.run(() => grab(e))}>
                     {e.name} · {e.calories} kcal
@@ -646,7 +664,7 @@ export function FoodScreen({ prefill }: { prefill?: FoodProduct }) {
           {saved.length > 0 && (
             <>
               <p className="section-label">Quick add — saved meals</p>
-              <div style={{ marginBottom: 10 }}>
+              <div className="chips">
                 {saved.map((m) => (
                   <button key={m.id} type="button" className="chip green btn" disabled={action.busy} onClick={() => void action.run(() => addSaved(m))}>
                     {m.emoji ? `${m.emoji} ` : ''}{m.name}

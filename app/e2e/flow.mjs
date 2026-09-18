@@ -106,8 +106,8 @@ await step('switch exercise via pill', async () => {
 
 await step('scan screen: manual QR resolve -> known model', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor()
-  await page.locator('.text-in').fill('https://youtu.be/4s3rkgBX5So')
+  await page.getByRole('heading', { name: 'Scan' }).waitFor()
+  await page.locator('#scan-code').fill('https://youtu.be/4s3rkgBX5So')
   await page.getByText('Go', { exact: true }).click()
   // youtu.be form must normalize to the catalog watch?v= form
   await page.getByText('Life Fitness Seated Leg Press').waitFor()
@@ -135,7 +135,7 @@ await step('log sets from machine -> back in logger on Leg Press', async () => {
 
 await step('rescan resolves to MY machine now', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill('https://www.youtube.com/watch?v=4s3rkgBX5So')
+  await page.locator('#scan-code').fill('https://www.youtube.com/watch?v=4s3rkgBX5So')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('My setup').waitFor() // straight to mapped machine screen
   await page.getByText('‹ Scanner').click()
@@ -144,7 +144,7 @@ await step('rescan resolves to MY machine now', async () => {
 await step('life fitness qrredirect url -> video + map machine', async () => {
   // real-world URL shape: sticker redirects to trainer.lifefitness.com with the
   // YouTube id in url-video and the lfconnect sticker url base64d in referer-link
-  await page.locator('.text-in').fill('https://trainer.lifefitness.com/qrredirect?referer-link=aHR0cHM6Ly9sZmNvbm5lY3QuY29tL3E/dD1zJm09c3NwZA==&referer-type=STRENGTH&url-video=ZbVNPTyVNTQ')
+  await page.locator('#scan-code').fill('https://trainer.lifefitness.com/qrredirect?referer-link=aHR0cHM6Ly9sZmNvbm5lY3QuY29tL3E/dD1zJm09c3NwZA==&referer-type=STRENGTH&url-video=ZbVNPTyVNTQ')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Life Fitness machine').waitFor()
   await page.locator('.video-thumb img').waitFor() // thumbnail from url-video id
@@ -156,7 +156,7 @@ await step('life fitness qrredirect url -> video + map machine', async () => {
 
 await step('sticker lfconnect url resolves to the same machine', async () => {
   await page.getByText('‹ Scanner').click()
-  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=sspd')
+  await page.locator('#scan-code').fill('https://lfconnect.com/q?t=s&m=sspd')
   await page.getByText('Go', { exact: true }).click() // manual entry goes straight to the machine
   await page.locator('h1', { hasText: 'Pulldown by the mirrors' }).waitFor()
   await page.getByText('My setup').waitFor()
@@ -173,7 +173,7 @@ await step('legacy machine without exerciseIds stays single-exercise', async () 
     qrKey: 'example.com/gym/legacy-chest-press',
     favorite: false,
   })
-  await page.locator('.text-in').fill(legacyQr)
+  await page.locator('#scan-code').fill(legacyQr)
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Legacy chest press').waitFor()
   await page.getByText('Log Chest Press sets').waitFor()
@@ -187,7 +187,7 @@ const dualQr = 'https://example.com/gym/dual-fly-1'
 let dualMachineId = ''
 
 await step('map one physical machine to two exercises', async () => {
-  await page.locator('.text-in').fill(dualQr)
+  await page.locator('#scan-code').fill(dualQr)
   await page.getByText('Go', { exact: true }).click()
   await page.locator('h1', { hasText: 'New machine' }).waitFor()
   await page.locator('input[placeholder="Chest press by the windows"]').fill('Dual fly station')
@@ -223,7 +223,7 @@ await step('log Pec Fly from the shared machine', async () => {
 
 await step('rescan and log Rear Delt Fly without duplicating the machine', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill(dualQr)
+  await page.locator('#scan-code').fill(dualQr)
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Choose an exercise').waitFor()
   await page.locator('.machine-movement', { hasText: 'Rear Delt Fly' }).click()
@@ -245,11 +245,11 @@ await step('rescan and log Rear Delt Fly without duplicating the machine', async
     throw new Error('sets did not preserve separate exercises on the shared machine')
   }
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor()
+  await page.getByRole('heading', { name: 'Scan' }).waitFor()
 })
 
 await step('several compatible machines require an explicit workout choice', async () => {
-  await page.locator('.text-in').fill('https://example.com/gym/pec-fly-2')
+  await page.locator('#scan-code').fill('https://example.com/gym/pec-fly-2')
   await page.getByText('Go', { exact: true }).click()
   await page.locator('input[placeholder="Chest press by the windows"]').fill('Second pec fly')
   await page.getByLabel('Add another exercise').selectOption({ label: 'Pec Fly' })
@@ -265,7 +265,7 @@ await step('several compatible machines require an explicit workout choice', asy
   await machineSelect.waitFor()
   if (await machineSelect.inputValue() !== '') throw new Error('logger silently chose among several compatible machines')
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor()
+  await page.getByRole('heading', { name: 'Scan' }).waitFor()
 })
 
 await step('finish workout -> summary with volume', async () => {
@@ -292,11 +292,11 @@ await step('routine builder: create, save, start, discard', async () => {
   await page.locator('.tab', { hasText: 'Train' }).click()
   await page.getByText('Choose routine').waitFor()
   await page.getByText('＋ New routine').click()
-  await page.getByText('Pick the machines').waitFor()
+  await page.getByText('Pick exercises and set targets').waitFor()
   await page.locator('input[placeholder="Push day"]').fill('Quick Push')
   await page.locator('select.text-in').selectOption({ label: 'Chest Press' })
   await page.getByText('Add', { exact: true }).click()
-  await page.getByText('1 exercise · 3 sets').waitFor()
+  await page.getByText('1 exercise · 3 planned entries').waitFor()
   await page.locator('.big-btn', { hasText: 'Save routine' }).click()
   await page.getByRole('button', { name: /Quick Push.*exercises/ }).click()
   await page.locator('h1', { hasText: 'Chest Press' }).waitFor()
@@ -337,8 +337,8 @@ await page.route('https://world.openfoodfacts.org/**', (route) => route.fulfill(
 
 await step('barcode: manual digits -> OFF lookup -> portion card logs entry', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor()
-  await page.locator('.text-in').fill('0123456789012')
+  await page.getByRole('heading', { name: 'Scan' }).waitFor()
+  await page.locator('#scan-code').fill('0123456789012')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Protein Bar — Barbebest').waitFor()
   await page.getByText('400 kcal per 100 g').waitFor()
@@ -462,7 +462,7 @@ await step('ai: configure proxy in Settings (mocked)', async () => {
 
 await step('ai: machine identification keeps every supported exercise', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=dual-fly-ai')
+  await page.locator('#scan-code').fill('https://lfconnect.com/q?t=s&m=dual-fly-ai')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Unknown QR code').waitFor()
   await page.getByText('✦ Ask AI what this is').click()
@@ -495,8 +495,8 @@ await step('ai: photo goes through the same review flow (mocked)', async () => {
 
 await step('ai: new machine -> quick setup -> starter program (mocked)', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor()
-  await page.locator('.text-in').fill('https://lfconnect.com/q?t=s&m=chpx')
+  await page.getByRole('heading', { name: 'Scan' }).waitFor()
+  await page.locator('#scan-code').fill('https://lfconnect.com/q?t=s&m=chpx')
   await page.getByText('Go').click()
   await page.getByText('Unknown QR code').waitFor() // machine setup screen mounted
   await page.locator('input[placeholder="Chest press by the windows"]').fill('Chest press by the door')
@@ -535,7 +535,7 @@ await step('ai: matching legacy machine-keyed program still loads', async () => 
     createdAt: Date.now(),
   })
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill('https://example.com/gym/pec-fly-2')
+  await page.locator('#scan-code').fill('https://example.com/gym/pec-fly-2')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('✦ Your starter program', { exact: true }).waitFor()
   await page.getByText('2×10').waitFor()
@@ -544,7 +544,7 @@ await step('ai: matching legacy machine-keyed program still loads', async () => 
 
 await step('ai: dual machine stores one program per exercise', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill(dualQr)
+  await page.locator('#scan-code').fill(dualQr)
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Choose an exercise').waitFor()
   await page.locator('.machine-movement', { hasText: 'Pec Fly' }).click()
@@ -587,7 +587,7 @@ await step('food db: configure self-hosted mirror in Settings (mocked)', async (
 
 await step('food db: barcode lookups hit the mirror first (mocked)', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.locator('.text-in').fill('4006381333931')
+  await page.locator('#scan-code').fill('4006381333931')
   await page.getByText('Go', { exact: true }).click()
   await page.getByText('Mirror Bar — Selfhost').waitFor() // came from the mirror, not the OFF mock
   await page.locator('.qr-found').click()

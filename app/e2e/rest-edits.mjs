@@ -38,6 +38,7 @@ try {
   await page.getByLabel('Set 1 weight in pounds').fill('90')
   await page.getByLabel('Set 1 reps', { exact: true }).fill('10')
   await page.getByRole('button', { name: 'Log set 1', exact: true }).click()
+  await page.locator('.saved-set').waitFor()
   const first = (await api('listSets', workout.id))[0]
   await page.getByRole('button', { name: 'Edit set 1', exact: true }).click()
   assert(await editForm().getByRole('button', { name: 'Save changes' }).isDisabled())

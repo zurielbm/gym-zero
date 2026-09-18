@@ -261,165 +261,169 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
   const curName = currentId ? exercises.get(currentId)?.name ?? 'Exercise' : 'Pick an exercise'
   const curMuscles = currentId ? exercises.get(currentId)?.muscleGroups.join(' / ') : ''
 
+  const setsCol = repsOnly ? 'Bodyweight' : 'lb'
+  const hint = (i: number, isNext: boolean) => {
+    const prevHint = perf?.sets[i]
+    if (prevHint) return `${prevHint.weightLb}×${prevHint.reps}`
+    if (isNext && baseline) return `yours ${baseline.weightLb}×${baseline.reps}`
+    if (isNext && progTarget) return `AI target ${progTarget.startWeightLb != null ? `${progTarget.startWeightLb}×` : ''}${progTarget.reps}`
+    return '—'
+  }
+  const nextOpen = exerciseIds.find((id) => id !== currentId && [...sets, ...activities].filter((s) => s.exerciseId === id).length < targetSets(id))
+
   return (
     <div className="page wide">
-      <div className="row" style={{ marginBottom: 8 }}>
-        <button className="back-link" style={{ margin: 0 }} onClick={() => go({ name: 'routines' })}>
-          ‹ {routine ? `${routine.emoji ?? ''} ${routine.name}`.trim() : 'Workout'}
-          {routine && ` · ${exerciseIds.filter((id) => [...sets, ...activities].some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
+      <div className="wk-head">
+        <div style={{ minWidth: 0 }}>
+          <button className="back-link" onClick={() => go({ name: 'routines' })}>
+            ‹ {routine ? `${routine.emoji ?? ''} ${routine.name}`.trim() : 'Workout'}
+            {routine && ` · ${exerciseIds.filter((id) => [...sets, ...activities].some((s) => s.exerciseId === id)).length}/${exerciseIds.length}`}
+          </button>
+          <div className="num">{elapsed}</div>
+        </div>
+        <button className="big-btn" aria-label="Finish workout →" onClick={() => void action.run(finish)} disabled={saving || action.busy || editingSetId !== null || (sets.length === 0 && activities.length === 0)}>
+          Finish workout
         </button>
-        <span className="num" style={{ fontSize: '1.2rem', color: 'var(--lime)', margin: 0 }}>{elapsed}</span>
       </div>
 
       <div className="split">
         <div>
-          <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>{curName}</h1>
-          <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-            {curMuscles}
-            {currentMachine && (
-              <>
-                {' · '}
-                <button className="text-button" style={{ fontWeight: 800 }}
-                   onClick={() => go({ name: 'machine', machineId: currentMachine.id, exerciseId: currentId })}>
-                  {currentMachine.nickname} ▸
-                </button>
-              </>
+          <div className="card lg">
+            <h1 className="p-h1" style={{ fontSize: '1.35rem' }}>{curName}</h1>
+            <p className="small" style={{ margin: '3px 0 0' }}>
+              {curMuscles}
+              {currentMachine && (
+                <>
+                  {' · '}
+                  <button className="text-button sm"
+                     onClick={() => go({ name: 'machine', machineId: currentMachine.id, exerciseId: currentId })}>
+                    {currentMachine.nickname} ▸
+                  </button>
+                </>
+              )}
+            </p>
+
+            {currentId && exercises.get(currentId) && <MusclePreview exercise={exercises.get(currentId)!} />}
+
+            {currentId && compatibleMachines.length > 1 && (
+              <div className="field workout-machine-field">
+                <label>Using machine</label>
+                <select
+                  className="text-in"
+                  value={selectedMachineId ?? ''} disabled={editingSetId !== null}
+                  onChange={(event) => { setSelectedMachineId(event.target.value || undefined); setProgram(undefined) }}
+                >
+                  <option value="">No machine selected</option>
+                  {compatibleMachines.map((machine) => (
+                    <option key={machine.id} value={machine.id}>{machine.nickname}</option>
+                  ))}
+                </select>
+                <span className="small">Choose the station so setup notes and starter targets stay correct.</span>
+              </div>
             )}
-          </p>
 
-          {currentId && exercises.get(currentId) && <MusclePreview exercise={exercises.get(currentId)!} />}
-
-          {currentId && compatibleMachines.length > 1 && (
-            <div className="field workout-machine-field">
-              <label>Using machine</label>
-              <select
-                className="text-in"
-                value={selectedMachineId ?? ''} disabled={editingSetId !== null}
-                onChange={(event) => { setSelectedMachineId(event.target.value || undefined); setProgram(undefined) }}
-              >
-                <option value="">No machine selected</option>
-                {compatibleMachines.map((machine) => (
-                  <option key={machine.id} value={machine.id}>{machine.nickname}</option>
-                ))}
-              </select>
-              <span className="small">Choose the station so setup notes and starter targets stay correct.</span>
-            </div>
-          )}
-
-          {error && <p role="alert" className="small" style={{ color: 'var(--danger)' }}>{error}</p>}
-          {currentId && timed && currentExercise && <ActivityLogger key={currentId}
-            exercise={currentExercise} workoutId={workout.id} machineId={selectedMachineId}
-            entries={activities.filter((a) => a.exerciseId === currentId)}
-            target={routine?.items.find((i) => i.exerciseId === currentId)}
-            onBusyChange={setSaving}
-            onChange={(entries) => setActivities((all) => [...all.filter((a) => a.exerciseId !== currentId), ...entries])} />}
-          {currentId && !timed && (
-            <div className="card">
-              <div className="set-head"><span>#</span><span style={{ textAlign: 'center' }}>{repsOnly ? 'Bodyweight' : 'lb'}</span><span style={{ textAlign: 'center' }}>Reps</span><span /></div>
-              {Array.from({ length: rowCount }, (_, i) => {
-                const done = logged[i]
-                const prevHint = perf?.sets[i]
-                if (done) {
-                  return (
-                    <div className="saved-set" key={done.id}>
-                    <div className="set-row">
-                      <b>{done.setNumber}</b>
-                      <div>
+            {error && <p role="alert" className="small" style={{ color: 'var(--danger)' }}>{error}</p>}
+            {currentId && timed && currentExercise && <ActivityLogger key={currentId}
+              exercise={currentExercise} workoutId={workout.id} machineId={selectedMachineId}
+              entries={activities.filter((a) => a.exerciseId === currentId)}
+              target={routine?.items.find((i) => i.exerciseId === currentId)}
+              onBusyChange={setSaving}
+              onChange={(entries) => setActivities((all) => [...all.filter((a) => a.exerciseId !== currentId), ...entries])} />}
+            {currentId && !timed && (
+              <div style={{ marginTop: 12 }}>
+                <div className="set-head with-prev"><span>Set</span><span>Prev</span><span>{setsCol}</span><span>Reps</span><span /></div>
+                {Array.from({ length: rowCount }, (_, i) => {
+                  const done = logged[i]
+                  if (done) {
+                    return (
+                      <div className="saved-set" key={done.id}>
+                      <div className="set-row with-prev logged">
+                        <b>{done.setNumber}</b>
+                        <span className="prev-col">{hint(i, false)}</span>
                         <div className="logged-val">{done.recordingFormat === 'reps' ? '—' : done.weightLb}</div>
-                        {prevHint && <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>}
+                        <div className="logged-val">{done.reps}</div>
+                        <button
+                          className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
+                          title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
+                          disabled={saving || action.busy || editingSetId !== null} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
+                        >
+                          {armedId === done.id ? '✕' : '✓'}
+                        </button>
                       </div>
-                      <div className="logged-val">{done.reps}</div>
-                      <button
-                        className={`set-done-btn ${armedId === done.id ? 'del-armed' : 'done'}`}
-                        title={armedId === done.id ? 'Tap again to remove this set' : 'Remove this set'}
-                        disabled={saving || action.busy || editingSetId !== null} onClick={() => (armedId === done.id ? void action.run(() => deleteRow(done)) : armDelete(done.id))}
-                      >
-                        {armedId === done.id ? '✕' : '✓'}
-                      </button>
-                    </div>
-                    <div className="saved-set-actions"><EditedSetLabel set={done} /><button className="text-button" aria-label={`Edit set ${done.setNumber}`} disabled={saving || action.busy || editingSetId !== null} onClick={() => { disarm(); setEditingSetId(done.id) }}>Edit set</button></div>
-                    {editingSetId === done.id && <SetEditor set={done} exerciseName={curName} onSave={saveSetEdit} onCancel={() => setEditingSetId(null)} />}
-                    </div>
-                  )
-                }
-                const isNext = i === logged.length
-                const d = defaultFor(i)
-                return (
-                  <div className="set-row" key={i}>
-                    <b className={isNext ? '' : 'faint'}>{i + 1}</b>
-                    <div>
+                      <div className="saved-set-actions"><EditedSetLabel set={done} /><button className="text-button sm" aria-label={`Edit set ${done.setNumber}`} disabled={saving || action.busy || editingSetId !== null} onClick={() => { disarm(); setEditingSetId(done.id) }}>Edit set</button></div>
+                      {editingSetId === done.id && <SetEditor set={done} exerciseName={curName} onSave={saveSetEdit} onCancel={() => setEditingSetId(null)} />}
+                      </div>
+                    )
+                  }
+                  const isNext = i === logged.length
+                  const d = defaultFor(i)
+                  return (
+                    <div className={`set-row with-prev${isNext ? ' next' : ''}`} key={i}>
+                      <b className={isNext ? '' : 'faint'}>{i + 1}</b>
+                      <span className="prev-col">{hint(i, isNext)}</span>
                       <input
                         className={`set-in${isNext ? '' : ' pending'}`}
                         aria-label={`Set ${i + 1} weight in pounds`} disabled={action.busy || saving || repsOnly} inputMode="decimal" value={repsOnly ? '—' : d.w} placeholder="lb"
                         onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, w: e.target.value } } }))}
                       />
-                      {prevHint
-                        ? <span className="prev">prev {prevHint.weightLb}×{prevHint.reps}</span>
-                        : isNext && baseline
-                        ? <span className="prev">yours {baseline.weightLb}×{baseline.reps}</span>
-                        : isNext && progTarget && (
-                          <span className="prev">
-                            AI target {progTarget.startWeightLb != null ? `${progTarget.startWeightLb}×` : ''}{progTarget.reps}
-                          </span>
-                        )}
+                      <input
+                        className={`set-in${isNext ? '' : ' pending'}`}
+                        aria-label={`Set ${i + 1} reps`} disabled={action.busy || saving} inputMode="numeric" value={d.r} placeholder="reps"
+                        onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, r: e.target.value } } }))}
+                      />
+                      <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={saving || action.busy || editingSetId !== null || !isNext || (!repsOnly && (!d.w.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0)) || !d.r.trim() || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
                     </div>
-                    <input
-                      className={`set-in${isNext ? '' : ' pending'}`}
-                      aria-label={`Set ${i + 1} reps`} disabled={action.busy || saving} inputMode="numeric" value={d.r} placeholder="reps"
-                      onChange={(e) => setDrafts((old) => ({ ...old, [currentId!]: { ...old[currentId!], [i]: { ...d, r: e.target.value } } }))}
-                    />
-                    <button className="set-done-btn" aria-label={`Log set ${i + 1}`} disabled={saving || action.busy || editingSetId !== null || !isNext || (!repsOnly && (!d.w.trim() || !Number.isFinite(Number(d.w)) || Number(d.w) < 0)) || !d.r.trim() || !Number.isInteger(Number(d.r)) || Number(d.r) <= 0} onClick={() => void action.run(() => logRow(i))}>✓</button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )}
 
-          {armedId && <p className="small" role="status">Tap the red × again to remove that set.</p>}
-          {!timed && currentId && logged.length >= targetSets(currentId) && <div className="card">
-            <p className="small lm" role="status">Target complete · {logged.length} sets saved</p>
-            {exerciseIds.find((id) => id !== currentId && [...sets, ...activities].filter((s) => s.exerciseId === id).length < targetSets(id)) && <button className="ghost-btn" disabled={editingSetId !== null} onClick={() => switchExercise(exerciseIds.find((id) => id !== currentId && [...sets, ...activities].filter((s) => s.exerciseId === id).length < targetSets(id))!)}>Next exercise →</button>}
+            {armedId && <p className="small" role="status" style={{ margin: '8px 0 0' }}>Tap the red × again to remove that set.</p>}
+            {perf && !timed && (
+              <p className="small" style={{ margin: '10px 0 0', fontSize: '0.74rem' }}>
+                Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
+                {perf.sets.map((s) => repsOnly ? `${s.reps} reps` : `${s.weightLb}×${s.reps}`).join(' · ')}
+              </p>
+            )}
+          </div>
+
+          {!timed && currentId && logged.length >= targetSets(currentId) && <div className="card" style={{ borderColor: 'var(--lime)', background: 'var(--lime-dim)' }}>
+            <div className="row">
+              <p className="small lm" role="status" style={{ margin: 0 }}>Target complete · {logged.length} sets saved</p>
+              {nextOpen && <button className="big-btn" style={{ width: 'auto', minHeight: 38, fontSize: '0.82rem' }} disabled={editingSetId !== null} onClick={() => switchExercise(nextOpen)}>Next exercise ›</button>}
+            </div>
           </div>}
-          {perf && !timed && (
-            <p className="lab" style={{ margin: '0 0 12px' }}>
-              Last time ({perf.workoutDate.slice(5).replace('-', '/')}) ·{' '}
-              {perf.sets.map((s) => repsOnly ? `${s.reps} reps` : `${s.weightLb}×${s.reps}`).join(' · ')}
-            </p>
-          )}
         </div>
 
         <div className="side">
-          <p className="section-label" style={{ marginTop: 16 }}>Exercises</p>
-          <div className="field">
+          <p className="section-label">Exercises</p>
+          <div className="chips">
+            {exerciseIds.map((id) => {
+              const count = [...sets, ...activities].filter((s) => s.exerciseId === id).length
+              const target = targetSets(id)
+              return (
+                <button
+                  key={id} disabled={saving || action.busy || editingSetId !== null} aria-pressed={id === currentId}
+                  className={`exercise-pill${id === currentId ? ' current' : ''}`}
+                  onClick={() => switchExercise(id)}
+                >
+                  <span className="row">
+                    <b>{exercises.get(id)?.name ?? id}</b>
+                    <span className="small">{count}/{target} {isTimedExercise(exercises.get(id)) && recordingFormat(exercises.get(id)) !== 'timed-sets' ? 'entries' : 'sets'}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="field" style={{ margin: 0 }}>
             <select className="text-in" aria-label="Add an exercise to workout" value="" disabled={saving || action.busy || editingSetId !== null} onChange={(e) => { if (e.target.value) switchExercise(e.target.value) }}>
               <option value="">＋ Add an exercise…</option>
               {[...exercises.values()].filter((ex) => !exerciseIds.includes(ex.id)).map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
             </select>
             {!exerciseIds.length && <p className="small">Choose an exercise above or scan a machine to start logging.</p>}
           </div>
-          {exerciseIds.map((id) => {
-            const count = [...sets, ...activities].filter((s) => s.exerciseId === id).length
-            const target = targetSets(id)
-            return (
-              <button
-                key={id} disabled={saving || action.busy || editingSetId !== null} aria-pressed={id === currentId}
-                className={`exercise-pill${id === currentId ? ' current' : ''}`}
-                onClick={() => switchExercise(id)}
-              >
-                <div className="row">
-                  <b>{exercises.get(id)?.name ?? id}</b>
-                  <span className="small">{count}/{target} {isTimedExercise(exercises.get(id)) && recordingFormat(exercises.get(id)) !== 'timed-sets' ? 'entries' : 'sets'}</span>
-                </div>
-              </button>
-            )
-          })}
 
-          <div style={{ height: 14 }} />
-          <button className="big-btn blue" onClick={() => void action.run(finish)} disabled={saving || action.busy || editingSetId !== null || (sets.length === 0 && activities.length === 0)}>
-            Finish workout →
-          </button>
-          <div style={{ height: 8 }} />
-          <button className="ghost-btn danger" disabled={saving || action.busy || editingSetId !== null} onClick={() => void action.run(cancel)}>Discard workout</button>
+          <button className="ghost-btn danger" style={{ marginTop: 8 }} disabled={saving || action.busy || editingSetId !== null} onClick={() => void action.run(cancel)}>Discard workout</button>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { addDrinkWithFood, deleteDrinkWithUndo } from '../data/food-actions'
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { Seg } from './Seg'
+import { Ring } from './Ring'
 import { fmtHalf, todayWorkoutMinutes, waterTargetOz, workoutBumpOz } from '../lib/hydration'
 import type { Container, DrinkEntry, DrinkKind } from '../types'
 import { currentMealSlot, toDayKey } from '../types'
@@ -107,17 +108,18 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
   return (
     <div className="card">
       <div className="row">
-        <span className="lab">Hydration</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Ring value={totalOz} target={target} color="var(--water)" size="sm" label={`Water ${totalOz} of ${target} oz`}>{Math.round(pct)}%</Ring>
+          <div>
+            <span className="lab">Hydration</span>
+            <span className="num" style={{ display: 'block', fontSize: '1.3rem' }}>
+              {totalOz}<span className="of" style={{ fontFamily: 'var(--body)', fontSize: '0.7rem', color: 'var(--muted)', fontWeight: 600 }}> / {target} oz</span>
+            </span>
+          </div>
+        </div>
         {trainedMin > 0 && <span className="lab lm">Trained · +{workoutBumpOz(trainedMin)} oz</span>}
       </div>
-      <div className="macro-row" style={{ border: 0, margin: 0, paddingTop: 8 }}>
-        <span className="lab">Water</span>
-        <span className="num">
-          {totalOz}<span className="of"> / {target} oz</span>
-        </span>
-      </div>
-      <div className="bar"><i className="water" style={{ width: `${pct}%` }} /></div>
-      <span className="small" style={{ display: 'block', marginTop: 8, ...(totalOz >= target ? { color: 'var(--lime)' } : {}) }}>
+      <span className="small" style={{ display: 'block', marginTop: 10, ...(totalOz >= target ? { color: 'var(--lime)' } : {}) }}>
         {words()}
       </span>
       {trainedMin >= 60 && !hadElectrolytes && (
@@ -180,7 +182,7 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
         </div>
       ) : (
         <>
-          <div style={{ marginTop: 12 }}>
+          <div className="chips" style={{ marginTop: 12 }}>
             {containers.map((c) => (
               <button key={c.id} type="button" className="chip green btn" disabled={action.busy} onClick={() => void action.run(() => logDrink(c))}>
                 {c.emoji ? `${c.emoji} ` : ''}{c.name} · {fraction === 1 ? `${c.volumeOz}` : `${Math.round(c.volumeOz * fraction * 10) / 10}`} oz

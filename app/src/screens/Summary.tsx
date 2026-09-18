@@ -58,22 +58,22 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
     <div className="page">
       <button className="back-link" onClick={() => go({ name: 'history' })}>‹ Stats</button>
       <span className="lab lm">Workout complete</span>
-      <h1 className="p-h1" style={{ fontSize: '2.8rem', margin: '6px 0 2px' }}>Done<span className="dot">.</span></h1>
+      <h1 className="p-h1" style={{ fontSize: '2rem' }}>Done<span className="dot">.</span></h1>
       <p className="p-sub">{new Date(summary.workout.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · Saved workout</p>
 
-      <div className="stat-strip">
-        <span>
-          <span className="num">{Math.max(1, Math.round(summary.durationSec / 60))}</span>
+      <div className="tiles" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="tile" style={{ minHeight: 0 }}>
           <span className="lab">Minutes</span>
-        </span>
-        <span>
-          <span className="num">{summary.setCount}</span>
+          <span className="num">{Math.max(1, Math.round(summary.durationSec / 60))}</span>
+        </div>
+        <div className="tile" style={{ minHeight: 0 }}>
           <span className="lab">Sets</span>
-        </span>
-        <span>
-          <span className="num">{Math.round(summary.totalVolumeLb).toLocaleString()}</span>
+          <span className="num">{summary.setCount}</span>
+        </div>
+        <div className="tile" style={{ minHeight: 0 }}>
           <span className="lab">Lb volume</span>
-        </span>
+          <span className="num">{Math.round(summary.totalVolumeLb).toLocaleString()}</span>
+        </div>
       </div>
 
       {summary.activityCount > 0 && <div className="card">
@@ -123,9 +123,8 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
           </div>)}
         </div>)}
       </section>}
-      <button className="ghost-btn" onClick={() => go({ name: 'history' })}>Back to Stats →</button>
-      <div style={{ height: 8 }} />
       <button className="big-btn" onClick={() => go({ name: 'home' })}>Back to Home →</button>
+      <button className="ghost-btn" onClick={() => go({ name: 'history' })}>Back to Stats →</button>
     </div>
   )
 }

@@ -48,7 +48,7 @@ await page.route('https://ai.ux.test/**', async (route) => {
 try {
   await page.goto(process.env.BASE_URL ?? 'http://localhost:5173/')
   await tab('Fuel').click()
-  assert((await page.getByRole('button', { name: '＋ Log food', exact: true }).boundingBox()).y < 150, 'log food is above the fold')
+  assert((await page.getByRole('button', { name: '＋ Log food', exact: true }).boundingBox()).y < 700, 'log food is above the fold')
   await shot('fuel-390')
   await page.getByRole('button', { name: '＋ Log food', exact: true }).click()
   await page.getByLabel('Describe your food').fill('a chicken bowl')

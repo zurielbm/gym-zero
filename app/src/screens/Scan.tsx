@@ -171,10 +171,8 @@ export function ScanScreen() {
       >
         ‹ Back
       </button>
-      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan<span className="dot">.</span></h1>
-      <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-        Scan a code or identify an exercise from a photo
-      </p>
+      <h1 className="p-h1">Scan<span className="dot">.</span></h1>
+      <p className="p-sub">Machine QR, food barcode, or identify an exercise from a photo</p>
 
       <div className="viewfinder">
         <video ref={videoRef} muted playsInline style={{ display: cameraOn ? 'block' : 'none' }} />
@@ -210,7 +208,7 @@ export function ScanScreen() {
           {cameraState === 'starting' ? 'Allow camera access when your browser asks. You can also enter a code below.' : cameraState === 'denied' ? 'Allow camera access in your browser’s site settings, then retry. Or enter the code below.' : 'Use a device with a camera and an HTTPS connection, or enter the code below.'}
         </p>
       )}
-      {cameraState !== 'starting' && !cameraOn && <button className="ghost-btn" style={{ marginBottom: 12 }} onClick={() => setCameraAttempt((n) => n + 1)}>Retry camera</button>}
+      {cameraState !== 'starting' && !cameraOn && <button className="ghost-btn" onClick={() => setCameraAttempt((n) => n + 1)}>Retry camera</button>}
       <ExercisePhoto capturePhoto={cameraOn ? capturePhoto : undefined} />
       <div className="field">
         <label htmlFor="scan-code">Or enter a QR link / barcode digits</label>

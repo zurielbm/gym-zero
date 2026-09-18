@@ -68,7 +68,7 @@ await page.goto(process.env.BASE_URL ?? 'http://localhost:5199/')
 
 await step('camera EAN-13 -> wasm decode -> product card', async () => {
   await page.locator('.tabbar .scan-key').click()
-  await page.getByText('Point at a machine QR or a food barcode').waitFor({ timeout: 8000 })
+  await page.getByRole('heading', { name: 'Scan' }).waitFor({ timeout: 8000 })
   await page.getByText('Protein Bar — Barbebest').waitFor({ timeout: 15000 })
   await page.getByText('400 kcal per 100 g').waitFor()
 })
