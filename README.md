@@ -84,6 +84,22 @@ Convex backend + dashboard + function deploy job) — see `DEPLOY.md`.
 
 ### Production environment setup
 
+#### Login/session diagnostics
+
+In browser developer tools, enable **Preserve log** before reproducing a login
+failure and filter the Console for `[gym:auth]`. Sign-in, sign-up, sign-out,
+and session-token failures include the operation, failure category, HTTP status
+when available, duration, timestamp, and browser online/offline state. A browser
+reporting online does not guarantee it can reach the server. Successful token
+requests use the Debug/Verbose console level; cached tokens produce no log.
+Passwords, invite codes, cookies, tokens, user details, and raw error messages
+are excluded. These diagnostics stay in the browser console; they are not
+uploaded or stored by the app. Login and session behavior is unchanged.
+
+Run `cd app && npm run test:auth` to check privacy and behavior preservation.
+
+#### Environment variables
+
 There are two separate sets of variables:
 
 1. **Dokploy/Compose variables** configure and connect the containers.

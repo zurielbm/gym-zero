@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { db, syncFlags, type OutboxEntry } from './db'
 import { currentUser } from './auth-store'
 import { authClient } from '../lib/auth-client'
+import { observeAuthRequest } from '../lib/auth-diagnostics'
 
 /**
  * Replication layer between the local Dexie store and a self-hosted Convex
@@ -117,7 +118,7 @@ function jwtExpMs(token: string): number {
  */
 async function authToken(): Promise<string | null> {
   if (tokenCache && tokenCache.exp - Date.now() > 60_000) return tokenCache.token
-  const res = await authClient.convex.token({ fetchOptions: { throw: false } })
+  const res = await observeAuthRequest('session-token', () => authClient.convex.token({ fetchOptions: { throw: false } }))
   const token = res.data?.token
   if (!token) {
     tokenCache = null
