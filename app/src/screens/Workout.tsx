@@ -14,6 +14,7 @@ const workoutDrafts = new Map<string, Record<string, Record<number, Draft>>>()
 
 export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initialExerciseId?: string; initialMachineId?: string }) {
   const { api, go, activeWorkout, setActiveWorkout, exercises, startRest } = useApp()
+  const [addingNext, setAddingNext] = useState(false)
   const [routine, setRoutine] = useState<Routine | null>(null)
   const [activities, setActivities] = useState<ActivityLog[]>([])
   const [saving, setSaving] = useState(false)
@@ -227,6 +228,8 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
     setAddedExercises((old) => old.includes(id) ? old : [...old, id])
     setDrafts((old) => ({ ...old, [id]: old[id] ?? {} }))
     setEditingSetId(null)
+    setAddingNext(false)
+    setError('')
     setCurrentId(id)
     setProgram(undefined)
     disarm()
@@ -284,6 +287,43 @@ export function WorkoutScreen({ initialExerciseId, initialMachineId }: { initial
         <button className="big-btn" aria-label="Finish workout →" onClick={() => void action.run(finish)} disabled={saving || action.busy || editingSetId !== null || (sets.length === 0 && activities.length === 0)}>
           Finish workout
         </button>
+      </div>
+
+      <div className="card workout-next-exercise">
+        <button
+          className="big-btn" style={{ marginBottom: 8 }}
+          disabled={saving || action.busy || editingSetId !== null}
+          onClick={() => go({ name: 'scan' })}
+        >
+          Scan next machine
+        </button>
+        <button
+          className="ghost-btn"
+          aria-expanded={addingNext}
+          aria-controls="workout-next-picker"
+          disabled={saving || action.busy || editingSetId !== null}
+          onClick={() => setAddingNext((open) => !open)}
+        >
+          {addingNext ? 'Cancel adding exercise' : '＋ Add next exercise'}
+        </button>
+        {addingNext && (
+          <div id="workout-next-picker" className="field" style={{ margin: '12px 0 0' }}>
+            <label htmlFor="workout-next-select">Choose your next exercise</label>
+            <select
+              id="workout-next-select" className="text-in" value="" autoFocus
+              disabled={saving || action.busy || editingSetId !== null}
+              onChange={(event) => { if (event.target.value) switchExercise(event.target.value) }}
+            >
+              <option value="">Select an exercise…</option>
+              {[...exercises.values()].sort((a, b) => a.name.localeCompare(b.name)).map((exercise) => (
+                <option key={exercise.id} value={exercise.id}>
+                  {exercise.name}{exerciseIds.includes(exercise.id) ? ' · In this workout' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="small" style={{ margin: '8px 0 0' }}>Continue this workout. Your logged sets stay saved.</p>
+          </div>
+        )}
       </div>
 
       <div className="split">
