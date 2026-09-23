@@ -121,7 +121,7 @@ export interface AiRequestOptions {
   onRetry?: () => void
 }
 
-async function callProxy(
+export async function callProxy(
   config: AiConfig,
   system: string,
   user: string | ContentPart[],

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { SetEditor, EditedSetLabel } from '../components/SetEditor'
 import { useAction, useFeedback } from '../components/Feedback'
 import { WorkoutMuscleMap } from '../components/WorkoutMuscleMap'
+import { WorkoutAiReview } from '../components/WorkoutAiReview'
 import { useApp } from '../AppContext'
 import type { WorkoutSummary, WorkoutSet } from '../types'
 import { formatActivity } from '../lib/exercises'
@@ -116,6 +117,16 @@ export function SummaryScreen({ workoutId }: { workoutId: string }) {
         <b>Nothing was logged in this workout.</b>
         <p className="small">Exercises you planned but didn’t log aren’t counted here or on the muscle map.</p>
       </div>}
+
+      {/* Current notes merged in; the key remounts the card (aborting any request) whenever its inputs change. */}
+      {(() => {
+        const reviewSummary = { ...summary, workout: { ...summary.workout, notes: notes.trim() || undefined } }
+        return <WorkoutAiReview
+          key={`${workoutId}:${JSON.stringify([reviewSummary, sets, activities])}`}
+          summary={reviewSummary} sets={sets} activities={activities}
+          disabled={editingSetId !== null}
+        />
+      })()}
 
       <section className="card wo-prs" aria-labelledby="wo-prs-title">
         <h2 className="lab" id="wo-prs-title">Highlights</h2>

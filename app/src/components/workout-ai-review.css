@@ -1,0 +1,20 @@
+/* AI coach review card on the post-workout summary. Builds on .card/.text-in/.big-btn. */
+.wo-ai { min-width: 0; overflow-wrap: anywhere; }
+.wo-ai-context { margin: 0 0 4px; line-height: 1.45; }
+.wo-ai-label { display: block; margin-top: 4px; }
+.wo-ai-question { margin: 8px 0 12px; resize: vertical; width: 100%; box-sizing: border-box; }
+.wo-ai-ask { width: 100%; }
+.wo-ai > .small[role="status"] { margin: 8px 0 0; }
+
+.wo-ai-result { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); font-size: 0.88rem; line-height: 1.5; }
+.wo-ai-result.previous { opacity: 0.7; }
+.wo-ai-result p { margin: 0 0 8px; }
+.wo-ai-result ul, .wo-ai-result ol { margin: 0 0 8px; padding-left: 18px; }
+.wo-ai-result li + li { margin-top: 4px; }
+.wo-ai-meta { font-size: 0.74rem; color: var(--muted); padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); }
+.wo-ai-meta b { color: var(--ink); }
+.wo-ai-h { font-size: 0.66rem; font-weight: 800; color: var(--lime); text-transform: uppercase; letter-spacing: 0.14em; margin: 14px 0 6px; }
+
+.wo-ai-days { list-style: none; padding-left: 0 !important; display: grid; gap: 8px; }
+.wo-ai-days li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); margin: 0 !important; }
+.wo-ai-days b { font-size: 0.86rem; }

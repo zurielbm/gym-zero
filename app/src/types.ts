@@ -475,7 +475,7 @@ export interface DataAPI {
   getBaseline(exerciseId: string): Promise<StrengthBaseline | undefined>
   saveBaseline(b: Omit<StrengthBaseline, 'at'>): Promise<StrengthBaseline>
   deleteBaseline(exerciseId: string): Promise<void>
-  listRecentWorkouts(limit: number): Promise<WorkoutSummary[]>
+  listRecentWorkouts(limit: number, beforeStartedAt?: number): Promise<WorkoutSummary[]>
   getWorkoutSummary(workoutId: string): Promise<WorkoutSummary | undefined>
 
   // food

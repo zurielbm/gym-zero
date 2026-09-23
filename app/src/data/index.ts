@@ -204,7 +204,7 @@ export const api: DataAPI = {
   async getBaseline(exerciseId) { await ready(); return db.baselines.get(exerciseId) },
   async saveBaseline(baseline) { await ready(); const full: StrengthBaseline = { ...baseline, at: Date.now() }; await db.baselines.put(full); return full },
   async deleteBaseline(exerciseId) { await ready(); await db.baselines.delete(exerciseId) },
-  async listRecentWorkouts(limit) { await ready(); const workouts = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt)).sort((a, b) => b.startedAt - a.startedAt).slice(0, limit); return Promise.all(workouts.map(workoutSummary)) },
+  async listRecentWorkouts(limit, beforeStartedAt) { await ready(); const workouts = (await db.workouts.toArray()).filter((workout) => Boolean(workout.finishedAt) && (beforeStartedAt === undefined || (workout.startedAt < beforeStartedAt && workout.finishedAt! <= beforeStartedAt))).sort((a, b) => b.startedAt - a.startedAt).slice(0, limit); return Promise.all(workouts.map(workoutSummary)) },
   async getWorkoutSummary(workoutId) { await ready(); const workout = await db.workouts.get(workoutId); return workout ? workoutSummary(workout) : undefined },
   async listFood(date) { await ready(); return db.food.where('date').equals(date).toArray() },
   async addFood(entry) { await ready(); const full: FoodEntry = { ...entry, id: uid() }; await db.food.add(full); return full },
