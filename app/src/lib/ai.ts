@@ -7,7 +7,7 @@ import { ACTIVITY_CATEGORIES, RECORDING_FORMATS, aiProgramId } from '../types'
  * Direct client for a self-hosted CLIProxyAPI (OpenAI-compatible) endpoint.
  * The proxy is only reachable inside the user's tailnet, so the endpoint, key
  * and model live in Settings and calls go straight from the device — no server
- * hop. `useAiAvailable` drives the gray-out state of every AI button.
+ * hop. `useAiAvailable` drives the shared connection indicator.
  */
 
 export interface AiConfig {
@@ -24,6 +24,7 @@ export function aiConfig(settings: Settings): AiConfig | null {
   let endpoint = settings.aiEndpoint?.trim().replace(/\/+$/, '')
   if (!endpoint) return null
   if (!/^https?:\/\//i.test(endpoint)) endpoint = `https://${endpoint}`
+  endpoint = endpoint.replace(/\/v1$/, '')
   return {
     endpoint,
     apiKey: settings.aiApiKey?.trim() || undefined,
@@ -38,7 +39,7 @@ function headers(config: AiConfig, json: boolean): Record<string, string> {
   }
 }
 
-// ---------- reachability (drives grayed-out AI buttons) ----------
+// ---------- connection status ----------
 
 /** One probe result shared app-wide; keyed on endpoint+key so edits re-probe. */
 let probeCache: { key: string; ok: boolean; at: number } | null = null
@@ -63,38 +64,36 @@ export async function probeAi(config: AiConfig): Promise<boolean> {
 }
 
 export interface AiAvailability {
-  /** an endpoint is set in Settings */
   configured: boolean
-  /** the proxy answered the last probe — safe to enable AI buttons */
   available: boolean
+  checking: boolean
+  status: 'unconfigured' | 'checking' | 'ready' | 'unavailable'
+  recheck: () => void
 }
 
-/** Reachability of the configured proxy: probes on mount/focus, cached 60s, flips on online/offline. */
 export function useAiAvailable(settings: Settings): AiAvailability {
-  const endpoint = settings.aiEndpoint?.trim().replace(/\/+$/, '') ?? ''
-  const apiKey = settings.aiApiKey?.trim() ?? ''
+  const config = aiConfig(settings)
+  const endpoint = config?.endpoint ?? ''
+  const apiKey = config?.apiKey ?? ''
   const key = endpoint ? `${endpoint}|${apiKey}` : ''
-  const [available, setAvailable] = useState(() => probeCache?.key === key && probeCache.ok)
-
+  const [attempt, setAttempt] = useState(0)
+  const [state, setState] = useState<{ key: string; status: AiAvailability['status'] }>({ key: '', status: 'unconfigured' })
   useEffect(() => {
-    if (!key) {
-      setAvailable(false)
-      return
-    }
-    const config: AiConfig = { endpoint, apiKey: apiKey || undefined }
+    if (!key) { setState({ key, status: 'unconfigured' }); return }
     let alive = true
     const check = async (force = false) => {
-      if (!navigator.onLine) { if (alive) setAvailable(false); return }
+      if (!navigator.onLine) { if (alive) setState({ key, status: 'unavailable' }); return }
       if (!force && probeCache?.key === key && Date.now() - probeCache.at < PROBE_TTL_MS) {
-        if (alive) setAvailable(probeCache.ok)
+        if (alive) setState({ key, status: probeCache.ok ? 'ready' : 'unavailable' })
         return
       }
-      const ok = await probeAi(config)
-      if (alive) setAvailable(ok)
+      if (alive) setState({ key, status: 'checking' })
+      const ok = await probeAi({ endpoint, apiKey })
+      if (alive) setState({ key, status: ok && navigator.onLine ? 'ready' : 'unavailable' })
     }
-    void check()
+    void check(attempt > 0)
     const onOnline = () => void check(true)
-    const onOffline = () => setAvailable(false)
+    const onOffline = () => setState({ key, status: 'unavailable' })
     const onVisible = () => { if (document.visibilityState === 'visible') void check() }
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
@@ -105,9 +104,9 @@ export function useAiAvailable(settings: Settings): AiAvailability {
       window.removeEventListener('offline', onOffline)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [key])
-
-  return { configured: !!key, available: !!key && available }
+  }, [key, endpoint, apiKey, attempt])
+  const status = state.key === key ? state.status : key ? 'checking' : 'unconfigured'
+  return { configured: !!key, available: status === 'ready', checking: status === 'checking', status, recheck: () => setAttempt((n) => n + 1) }
 }
 
 // ---------- proxy call ----------
@@ -117,11 +116,17 @@ type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
+export interface AiRequestOptions {
+  signal?: AbortSignal
+  onRetry?: () => void
+}
+
 async function callProxy(
   config: AiConfig,
   system: string,
   user: string | ContentPart[],
   history: Array<{ role: 'assistant' | 'user'; content: string }> = [],
+  options: AiRequestOptions = {},
 ): Promise<unknown> {
   const body = JSON.stringify({
     model: config.model || DEFAULT_MODEL,
@@ -135,8 +140,11 @@ async function callProxy(
   })
 
   const attempt = async (): Promise<unknown> => {
+    options.signal?.throwIfAborted()
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30_000)
+    const abort = () => controller.abort()
+    options.signal?.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(abort, 30_000)
     try {
       const res = await fetch(`${config.endpoint}/v1/chat/completions`, {
         method: 'POST',
@@ -158,15 +166,26 @@ async function callProxy(
       return JSON.parse(content.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
     } finally {
       clearTimeout(timer)
+      options.signal?.removeEventListener('abort', abort)
     }
   }
 
   try {
-    return await attempt()
+    try { return await attempt() }
+    catch (err) {
+      options.signal?.throwIfAborted()
+      const status = (err as { status?: number }).status
+      if (err instanceof TypeError || (err as Error).name === 'AbortError' || (status !== undefined && status >= 500)) {
+        options.onRetry?.()
+        return await attempt()
+      }
+      throw err
+    }
   } catch (err) {
-    const status = (err as { status?: number }).status
-    const network = err instanceof TypeError || (err as Error).name === 'AbortError'
-    if (network || (status !== undefined && status >= 500)) return attempt() // single retry
+    options.signal?.throwIfAborted()
+    if ((err as Error).name === 'AbortError') throw new Error('AI took too long to respond. Your draft is safe. Try again.')
+    if (err instanceof TypeError) throw new Error('Could not reach AI. Check your connection or Tailscale, then try again.')
+    if (err instanceof SyntaxError) throw new Error('AI sent an unreadable response. Try again or enter the details by hand.')
     throw err
   }
 }
@@ -213,10 +232,11 @@ Reply with ONLY this JSON, no prose:
 Omit "question" entirely when you are reasonably sure. calories in kcal, protein/carbs/fat in grams, all integers. Include "meal" only when the text implies it. At most 12 items.`
 
 function toFoodResult(raw: unknown, emptyMessage: string): AiFoodResult {
-  const parsed = raw as { items?: unknown; question?: unknown }
+  const parsed = (raw && typeof raw === 'object' ? raw : {}) as { items?: unknown; question?: unknown }
   const list = Array.isArray(parsed.items) ? parsed.items : []
   const items: AiFoodItem[] = []
   for (const entry of list.slice(0, 12)) {
+    if (!entry || typeof entry !== 'object') continue
     const item = entry as Record<string, unknown>
     const name = typeof item.name === 'string' ? item.name.trim().slice(0, 60) : ''
     const calories = int(item.calories, 5000)
@@ -258,19 +278,19 @@ const answerTurns = (followup?: AiFoodAnswer): Array<{ role: 'assistant' | 'user
     { role: 'user', content: `User feedback / answer: ${followup.answer}\nRevise the items accordingly — trust what the user says over your own estimate — and reply with the same JSON shape (ask again only if something new truly matters).` },
   ] : []
 
-export async function parseFood(config: AiConfig, text: string, followup?: AiFoodAnswer): Promise<AiFoodResult> {
-  const raw = await callProxy(config, FOOD_SYSTEM, text.trim(), answerTurns(followup))
+export async function parseFood(config: AiConfig, text: string, followup?: AiFoodAnswer, options?: AiRequestOptions): Promise<AiFoodResult> {
+  const raw = await callProxy(config, FOOD_SYSTEM, text.trim(), answerTurns(followup), options)
   return toFoodResult(raw, "Couldn't read any food from that — try rephrasing.")
 }
 
 const FOOD_PHOTO_ADDENDUM = `
 The user sends a PHOTO of their food, with an optional text note. Identify what's on the plate and estimate portion sizes from what you can see — plates, cutlery, hands and packaging give scale. Be conservative when unsure.`
 
-export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, note?: string, followup?: AiFoodAnswer): Promise<AiFoodResult> {
+export async function parseFoodPhoto(config: AiConfig, photoDataUrl: string, note?: string, followup?: AiFoodAnswer, options?: AiRequestOptions): Promise<AiFoodResult> {
   const raw = await callProxy(config, FOOD_SYSTEM + FOOD_PHOTO_ADDENDUM, [
     { type: 'image_url', image_url: { url: photoDataUrl } },
     { type: 'text', text: note?.trim() || 'Log the food in this photo.' },
-  ], answerTurns(followup))
+  ], answerTurns(followup), options)
   return toFoodResult(raw, "Couldn't spot any food in that photo — try a clearer shot.")
 }
 
@@ -404,9 +424,11 @@ export interface ProgramInput {
   prev?: PrevPerformance
   /** self-reported "weight I can do"; used when there is no logged history */
   baseline?: StrengthBaseline
+  feedback?: string
+  previousProgram?: AiProgram | null
 }
 
-export async function recommendProgram(config: AiConfig, input: ProgramInput): Promise<AiProgram> {
+export async function recommendProgram(config: AiConfig, input: ProgramInput, options?: AiRequestOptions): Promise<AiProgram> {
   const { machine, exercise, machineAi, settings, prev, baseline } = input
   const profile = {
     experience: settings.experience ?? 'new',
@@ -423,13 +445,16 @@ export async function recommendProgram(config: AiConfig, input: ProgramInput): P
     machine: [machineAi?.manufacturer, machineAi?.modelName].filter(Boolean).join(' ') || machine.nickname,
     exercise: { name: exercise.name, muscleGroups: exercise.muscleGroups, equipment: exercise.equipment },
     profile,
+    userFeedback: input.feedback,
+    previousProgram: input.previousProgram,
     previousSets: prev?.sets,
     reportedWorkingWeight: baseline
       ? { weightLb: baseline.weightLb, reps: baseline.reps, weeksAgo: Math.max(0, Math.round((Date.now() - baseline.at) / 604_800_000)) }
       : undefined,
-  })) as Record<string, unknown>
+  }), [], options) as Record<string, unknown>
 
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined
+  if (!raw || typeof raw !== 'object' || !int(raw.sets, 6) || !int(raw.reps, 30)) throw new Error('AI did not return a usable program. Try again; your saved program is unchanged.')
   const sets = int(raw.sets, 6) || 3
   const reps = int(raw.reps, 30) || 12
   const startWeightLb = int(raw.startWeightLb, 1000)
@@ -448,15 +473,17 @@ export async function recommendProgram(config: AiConfig, input: ProgramInput): P
   }
 }
 
-export async function fetchMachineInfo(config: AiConfig, qrUrl: string, exercises: Exercise[]): Promise<MachineAiInfo> {
+export async function fetchMachineInfo(config: AiConfig, qrUrl: string, exercises: Exercise[], feedback?: string, options?: AiRequestOptions): Promise<MachineAiInfo> {
   const key = normalizeQrUrl(qrUrl)
   const catalog = exercises.map((exercise) => ({ id: exercise.id, name: exercise.name }))
   const raw = await callProxy(
     config,
     MACHINE_SYSTEM,
-    `QR url: ${qrUrl}\nNormalized code: ${key}\nExercise list: ${JSON.stringify(catalog)}`,
+    `QR url: ${qrUrl}\nNormalized code: ${key}\nExercise list: ${JSON.stringify(catalog)}\nUser correction: ${feedback || "none"}`,
+    [], options,
   ) as Record<string, unknown>
 
+  if (!raw || typeof raw !== 'object' || typeof raw.identified !== 'boolean') throw new Error('AI did not return a usable machine guide. Add more details and try again.')
   const confidence = raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low'
   const muscleGroups = (Array.isArray(raw.muscleGroups) ? raw.muscleGroups : [])
     .filter((group): group is MuscleGroup => MUSCLES.includes(group as MuscleGroup))

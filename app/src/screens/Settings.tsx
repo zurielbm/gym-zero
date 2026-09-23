@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { primeRestChime, playRestChime } from '../lib/rest-chime'
 import { useApp } from '../AppContext'
 import { Seg } from '../components/Seg'
 import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
 import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
+import { useAction, useFeedback } from '../components/Feedback'
 import { aiConfig, probeAi } from '../lib/ai'
 import { autoWaterTargetOz } from '../lib/hydration'
 import { probeFoodDb, SUPPORTED_SOURCE_SCHEMAS, type FoodDbMeta } from '../lib/food-sources'
@@ -67,9 +69,13 @@ function TargetsCard() {
   const [protein, setProtein] = useState(String(settings.proteinTarget))
   const [water, setWater] = useState(settings.waterTargetOz != null ? String(settings.waterTargetOz) : '')
 
+  const notify = useFeedback()
   const patch = async (p: Partial<Settings>) => {
-    await api.saveSettings({ ...settings, ...p })
-    await refreshSettings()
+    try {
+      await api.patchSettings(p)
+      await refreshSettings()
+      notify('Settings saved')
+    } catch { notify('Could not save settings. Please try again.', { error: true }) }
   }
 
   const autoWater = autoWaterTargetOz(settings.bodyWeightLb)
@@ -125,14 +131,35 @@ function TargetsCard() {
   )
 }
 
+function RestSoundCard() {
+  const { api, settings, refreshSettings } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
+  const enabled = settings.restSoundEnabled !== false
+  return <div className="card rest-sound-settings">
+    <span className="lab">Rest timer sound</span>
+    <p className="small">A soft, short chime when rest finishes. Plays once, with a gentle fade.</p>
+    <div className="rest-sound-actions">
+      <button className="ghost-btn" role="switch" aria-checked={enabled} aria-label="Rest completion sound" disabled={action.busy}
+        onClick={() => { if (!enabled) void primeRestChime(); void action.run(async () => { await api.patchSettings({ restSoundEnabled: !enabled }); await refreshSettings(); notify(enabled ? 'Rest sound off' : 'Rest sound on') }) }}>{enabled ? 'Sound on ✓' : 'Sound off'}</button>
+      <button className="ghost-btn" onClick={() => { void primeRestChime().then(ready => { if (!ready || !playRestChime()) notify('Sound is unavailable. Check your browser’s audio settings and try again.', { error: true }) }) }}>Preview chime</button>
+    </div>
+    <p className="small">Uses your device’s media volume. Keep the app open; sound may not play while the phone is locked or the browser is suspended.</p>
+  </div>
+}
+
 function TrainingProfileCard() {
   const { api, settings, refreshSettings } = useApp()
   const [limitations, setLimitations] = useState(settings.limitations ?? '')
   const [age, setAge] = useState(settings.birthYear ? String(new Date().getFullYear() - settings.birthYear) : '')
 
+  const notify = useFeedback()
   const patch = async (p: Partial<Settings>) => {
-    await api.saveSettings({ ...settings, ...p })
-    await refreshSettings()
+    try {
+      await api.patchSettings(p)
+      await refreshSettings()
+      notify('Settings saved')
+    } catch { notify('Could not save settings. Please try again.', { error: true }) }
   }
 
   return (
@@ -204,6 +231,8 @@ function TrainingProfileCard() {
 
 function AiCard() {
   const { api, settings, refreshSettings } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [endpoint, setEndpoint] = useState(settings.aiEndpoint ?? '')
   const [apiKey, setApiKey] = useState(settings.aiApiKey ?? '')
   const [model, setModel] = useState(settings.aiModel ?? '')
@@ -212,33 +241,36 @@ function AiCard() {
   const save = async () => {
     setState('testing')
     const next = {
-      ...settings,
       aiEndpoint: endpoint.trim() || undefined,
       aiApiKey: apiKey.trim() || undefined,
       aiModel: model.trim() || undefined,
     }
-    await api.saveSettings(next)
-    await refreshSettings()
-    const config = aiConfig(next)
-    if (!config) { setState('idle'); return }
-    setState(await probeAi(config) ? 'ok' : 'fail')
+    try {
+      await api.patchSettings(next)
+      await refreshSettings()
+      const config = aiConfig({ ...settings, ...next })
+      if (!config) { setState('idle'); notify('AI turned off'); return }
+      const ok = await probeAi(config)
+      setState(ok ? 'ok' : 'fail')
+      notify(ok ? 'AI settings saved · connection ready' : 'Settings saved. The AI connection could not be verified.', { error: !ok })
+    } catch (error) { setState('fail'); throw error }
   }
 
   return (
     <div className="card">
       <div className="row">
         <span className="lab">✦ AI assist — CLIProxyAPI</span>
-        {state === 'ok' && <span className="lab lm">Connected ✓</span>}
-        {state === 'fail' && <span className="lab" style={{ color: 'var(--danger)' }}>Unreachable</span>}
+        {state === 'ok' && <span className="lab lm" role="status">Connected ✓</span>}
+        {state === 'fail' && <span className="lab" role="status" style={{ color: 'var(--danger)' }}>Unreachable</span>}
       </div>
       <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
-        Your proxy's tailnet HTTPS address. AI buttons gray out whenever it can't be reached.
+        Connect your AI endpoint for food estimates and machine guidance. You can check the connection again from any AI screen.
       </span>
       <div className="field">
         <label>Endpoint</label>
         <input
           className="text-in" placeholder="https://optiplex.tailnet.ts.net" autoCapitalize="off" autoCorrect="off"
-          value={endpoint} onChange={(e) => { setEndpoint(e.target.value); setState('idle') }}
+          disabled={state === 'testing'} aria-label="AI endpoint" value={endpoint} onChange={(e) => { setEndpoint(e.target.value); setState('idle') }}
         />
       </div>
       <div className="in-grid">
@@ -246,19 +278,19 @@ function AiCard() {
           <label>API key</label>
           <input
             className="text-in" type="password" placeholder="sk-…"
-            value={apiKey} onChange={(e) => { setApiKey(e.target.value); setState('idle') }}
+            disabled={state === 'testing'} aria-label="AI API key" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setState('idle') }}
           />
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label>Model</label>
           <input
             className="text-in" placeholder="gpt-5.6-luna" autoCapitalize="off" autoCorrect="off"
-            value={model} onChange={(e) => { setModel(e.target.value); setState('idle') }}
+            disabled={state === 'testing'} aria-label="AI model" value={model} onChange={(e) => { setModel(e.target.value); setState('idle') }}
           />
         </div>
       </div>
       <div style={{ height: 10 }} />
-      <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={state === 'testing'} onClick={() => void save()}>
+      <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={state === 'testing'} onClick={() => void action.run(save)}>
         {state === 'testing' ? 'Testing…' : 'Test & save'}
       </button>
       {state === 'fail' && (
@@ -589,6 +621,7 @@ export function SettingsScreen() {
       <MyMachinesCard />
       <AccountCard />
       <TargetsCard />
+      <RestSoundCard />
       <AiCard />
       <FoodDbCard />
       <TrainingProfileCard />

@@ -3,7 +3,9 @@ import api from './data'
 import type { Exercise, Settings, Workout } from './types'
 import { Ctx } from './AppContext'
 import type { Screen } from './AppContext'
+import { primeRestChime, playRestChime } from './lib/rest-chime'
 import { SYNC_APPLIED_EVENT } from './data/sync'
+import { useFeedback } from './components/Feedback'
 import { TabBar, TopNav } from './components/TabBar'
 import { HomeScreen } from './screens/Home'
 import { RoutinesScreen } from './screens/Routines'
@@ -22,12 +24,16 @@ import { MachineSettingsScreen } from './screens/MachineSettings'
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export default function App() {
+  const notify = useFeedback()
+  const [loadError, setLoadError] = useState(false)
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
   const [settings, setSettings] = useState<Settings | null>(null)
   const [exercises, setExercises] = useState<Map<string, Exercise> | null>(null)
   const [activeWorkout, setActiveWorkout] = useState<Workout | undefined>(undefined)
   const [restLeft, setRestLeft] = useState<number | null>(null)
   const [restTotal, setRestTotal] = useState(90)
+  const soundEnabled = useRef(true)
+  soundEnabled.current = settings?.restSoundEnabled !== false
   const restTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -39,8 +45,16 @@ export default function App() {
         setExercises(new Map(exs.map((e) => [e.id, e])))
         setActiveWorkout(w)
       },
-    )
+    ).catch(() => { if (alive) setLoadError(true) })
     return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    const unlock = () => { if (soundEnabled.current) void primeRestChime() }
+    // Pointer/key events run before asynchronous set saving loses user activation.
+    document.addEventListener('pointerdown', unlock, { passive: true })
+    document.addEventListener('keydown', unlock)
+    return () => { document.removeEventListener('pointerdown', unlock); document.removeEventListener('keydown', unlock) }
   }, [])
 
   const stopRest = useCallback(() => {
@@ -57,21 +71,38 @@ export default function App() {
       setRestTotal(total)
       setRestLeft(total)
       restTimer.current = setInterval(() => {
-        const left = Math.round((endsAt - Date.now()) / 1000)
-        if (left <= 0) stopRest()
+        const left = Math.ceil((endsAt - Date.now()) / 1000)
+        if (left <= 0) {
+          stopRest()
+          if (soundEnabled.current) playRestChime()
+          notify('Rest complete — ready for your next set')
+          navigator.vibrate?.([100, 80, 100])
+        }
         else setRestLeft(left)
       }, 250)
     },
-    [settings, stopRest],
+    [settings, stopRest, notify],
   )
 
-  const go = useCallback(
-    (s: Screen) => {
-      if (s.name !== 'workout') stopRest()
-      setScreen(s)
-    },
-    [stopRest],
-  )
+  useEffect(() => () => { if (restTimer.current) clearInterval(restTimer.current) }, [])
+  useEffect(() => { if (!activeWorkout) stopRest() }, [activeWorkout, stopRest])
+
+  const screenRef = useRef(screen)
+  screenRef.current = screen
+  const go = useCallback((next: Screen) => {
+    if (JSON.stringify(next) === JSON.stringify(screenRef.current)) return
+    window.history.pushState({ gymScreen: next }, '')
+    setScreen(next)
+  }, [])
+  useEffect(() => {
+    window.history.replaceState({ gymScreen: { name: 'home' } }, '')
+    const onBack = (event: PopStateEvent) => setScreen(event.state?.gymScreen ?? { name: 'home' })
+    window.addEventListener('popstate', onBack)
+    return () => window.removeEventListener('popstate', onBack)
+  }, [])
+  useEffect(() => {
+    document.title = `${screen.name.replace('-', ' ')} · Gym Zero`
+  }, [screen])
 
   const refreshSettings = useCallback(async () => {
     setSettings(await api.getSettings())
@@ -83,14 +114,19 @@ export default function App() {
 
   // pulled sync records land in Dexie behind React's back; re-read shared state
   useEffect(() => {
-    const onApplied = () => { void refreshSettings(); void refreshExercises() }
+    const onApplied = () => {
+      void Promise.all([api.getSettings(), api.getActiveWorkout(), api.listExercises()]).then(([nextSettings, workout, catalog]) => {
+        setSettings(nextSettings); setActiveWorkout(workout); setExercises(new Map(catalog.map((exercise) => [exercise.id, exercise])))
+      }).catch(() => notify('Could not refresh synced data. Please reload.', { error: true }))
+    }
     window.addEventListener(SYNC_APPLIED_EVENT, onApplied)
     return () => window.removeEventListener(SYNC_APPLIED_EVENT, onApplied)
-  }, [refreshSettings, refreshExercises])
+  }, [notify])
 
   if (!settings || !exercises) {
     return <div className="shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <p className="small">Loading…</p>
+      {loadError ? <div role="alert"><p>Could not load your saved data.</p><button className="ghost-btn" onClick={() => location.reload()}>Try again</button></div>
+        : <p className="small" role="status">Loading your gym…</p>}
     </div>
   }
 
@@ -103,7 +139,7 @@ export default function App() {
     >
       <div className="shell">
         <TopNav />
-        <div className="screen" key={JSON.stringify(screen)}>
+        <main className={`screen${restLeft !== null ? ' has-rest' : ''}`} key={JSON.stringify(screen)}>
           {screen.name === 'home' && <HomeScreen />}
           {screen.name === 'routines' && <RoutinesScreen />}
           {screen.name === 'routine-edit' && <RoutineEditScreen routineId={screen.routineId} />}
@@ -119,15 +155,16 @@ export default function App() {
           {screen.name === 'settings' && <SettingsScreen />}
           {screen.name === 'machines' && <MachinesScreen notice={screen.notice} />}
           {screen.name === 'machine-settings' && <MachineSettingsScreen machineId={screen.machineId} from={screen.from} />}
-        </div>
+        </main>
 
-        {restLeft !== null && screen.name === 'workout' && (
+        {restLeft !== null && (
           <div className="rest-toast">
-            <span className="lab">Rest timer</span>
+            <span className="lab">Rest</span>
             <div className="bar">
               <i style={{ width: `${Math.max(0, Math.min(100, (restLeft / restTotal) * 100))}%`, transition: 'width 0.25s linear' }} />
             </div>
             <b>{fmtClock(restLeft)}</b>
+            <button className="ghost-btn" aria-label="Add 30 seconds of rest" onClick={() => startRest(restLeft + 30)}>+30s</button>
             <button className="ghost-btn" onClick={stopRest}>Skip</button>
           </div>
         )}

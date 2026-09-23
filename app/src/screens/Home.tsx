@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
+import { useAction } from '../components/Feedback'
 import { useApp } from '../AppContext'
-import { BarbellIcon, GearIcon } from '../components/icons'
+import { GearIcon } from '../components/icons'
+import { Ring } from '../components/Ring'
 import { STRENGTH_CHECK_ROUTINE_ID } from '../data/seed'
 import { todayWorkoutMinutes, waterTargetOz } from '../lib/hydration'
 import type { DayFoodStats, Routine, WorkoutSummary } from '../types'
 import { toDayKey } from '../types'
 
-const fmtDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: '2-digit', day: '2-digit' })
+const fmtDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
 function greeting() {
   const h = new Date().getHours()
@@ -15,26 +17,17 @@ function greeting() {
   return 'Evening'
 }
 
-function MacroBar({ label, value, target, unit, alt, water }: {
-  label: string; value: number; target: number; unit: string; alt?: boolean; water?: boolean
-}) {
-  const pct = Math.min(100, target > 0 ? (value / target) * 100 : 0)
-  return (
-    <>
-      <div className="macro-row">
-        <span className="lab">{label}</span>
-        <span className="num">
-          {value.toLocaleString()}
-          <span className="of"> / {target.toLocaleString()} {unit}</span>
-        </span>
-      </div>
-      <div className="bar"><i className={water ? 'water' : alt ? 'alt' : ''} style={{ width: `${pct}%` }} /></div>
-    </>
-  )
+function relativeDay(ts?: number) {
+  if (!ts) return 'never done'
+  const days = Math.floor((Date.now() - ts) / 86400_000)
+  if (days === 0) return 'done today'
+  if (days === 1) return 'done yesterday'
+  return `done ${days}d ago`
 }
 
 export function HomeScreen() {
   const { api, go, settings, activeWorkout, setActiveWorkout, exercises } = useApp()
+  const action = useAction()
   const [stats, setStats] = useState<DayFoodStats>({ calories: 0, protein: 0, carbs: 0, fat: 0 })
   const [waterOz, setWaterOz] = useState(0)
   const [trainedMin, setTrainedMin] = useState(0)
@@ -56,111 +49,118 @@ export function HomeScreen() {
     })
   }, [api])
 
+  const waterTarget = waterTargetOz(settings, trainedMin)
+  const kcalLeft = Math.max(0, settings.calorieTarget - stats.calories)
+  const startWorkout = () => go(activeWorkout ? { name: 'workout' } : { name: 'routines' })
+
   return (
     <div className="page wide">
       <div className="row">
         <span className="lab">{fmtDay.format(new Date())}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span className={`lab${streakDays > 0 ? ' lm' : ''}`}>
-            {streakDays > 0
-              ? `Week streak ${String(streakDays).padStart(2, '0')}`
-              : 'Ready when you are'}
-          </span>
-          <button className="icon-btn" title="Settings" onClick={() => go({ name: 'settings' })}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {streakDays > 0
+            ? <span className="chip green" style={{ margin: 0 }}>🔥 {streakDays} workout{streakDays === 1 ? '' : 's'} this week</span>
+            : <span className="small">Ready when you are</span>}
+          <button className="icon-btn" title="Settings" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
             <GearIcon />
           </button>
         </span>
       </div>
+      <h1 className="p-h1">{greeting()}<span className="dot">.</span></h1>
 
       <div className="home-grid">
         <div>
-          <h1 className="p-h1" style={{ fontSize: '2.1rem', margin: '10px 0 2px' }}>
-            {greeting()}<span className="dot">.</span>
-          </h1>
+          <div className="card lg">
+            <div className="row" style={{ marginBottom: 12 }}>
+              <span className="t">Today's fuel</span>
+              <span className="small">{kcalLeft.toLocaleString()} kcal left</span>
+            </div>
+            <div className="rings">
+              <div className="ring-cap">
+                <Ring value={stats.calories} target={settings.calorieTarget} label={`Calories ${stats.calories} of ${settings.calorieTarget}`} />
+                <div className="lab">Calories</div>
+                <div className="sub">{stats.calories.toLocaleString()} / {settings.calorieTarget.toLocaleString()} kcal</div>
+              </div>
+              <div className="ring-cap">
+                <Ring value={stats.protein} target={settings.proteinTarget} color="var(--ink)" label={`Protein ${stats.protein} of ${settings.proteinTarget} g`} />
+                <div className="lab">Protein</div>
+                <div className="sub">{stats.protein} / {settings.proteinTarget} g</div>
+              </div>
+              <div className="ring-cap">
+                <Ring value={waterOz} target={waterTarget} color="var(--water)" label={`Water ${waterOz} of ${waterTarget} oz`} />
+                <div className="lab">Water</div>
+                <div className="sub">{waterOz} / {waterTarget} oz</div>
+              </div>
+            </div>
+            {(stats.carbs > 0 || stats.fat > 0) && (
+              <p className="small" style={{ margin: '12px 0 0', fontSize: '0.74rem' }}>
+                {stats.carbs} g carbs · {stats.fat} g fat so far today
+              </p>
+            )}
+          </div>
 
-          <MacroBar label="Calories" value={stats.calories} target={settings.calorieTarget} unit="kcal" />
-          <MacroBar label="Protein" value={stats.protein} target={settings.proteinTarget} unit="g" alt />
-          <MacroBar label="Water" value={waterOz} target={waterTargetOz(settings, trainedMin)} unit="oz" water />
-          {(stats.carbs > 0 || stats.fat > 0) && (
-            <span className="small" style={{ display: 'block', marginTop: 8 }}>
-              {stats.carbs}g carbs · {stats.fat}g fat so far today
+          <button className="hero" onClick={startWorkout}>
+            <span>
+              <span className="lab">{activeWorkout ? 'In progress' : 'Up next'}</span>
+              <span className="t" style={{ display: 'block' }}>
+                {activeWorkout ? 'Workout in progress' : upNext ? `${upNext.emoji ? `${upNext.emoji} ` : ''}${upNext.name}` : 'Pick a routine'}
+              </span>
+              <span className="small" style={{ display: 'block', marginTop: 2 }}>
+                {activeWorkout ? 'Tap to keep logging' : upNext ? `${upNext.items.length} exercises · ${relativeDay(upNext.lastUsedAt)}` : 'Or start an empty workout'}
+              </span>
             </span>
-          )}
-
-          <div style={{ height: 18 }} />
-          <button
-            className="big-btn"
-            onClick={() => go(activeWorkout ? { name: 'workout' } : { name: 'routines' })}
-          >
-            <span style={{ display: 'inline-flex', width: 20 }}><BarbellIcon /></span>
-            {activeWorkout ? 'Resume Workout' : 'Start Workout'} →
+            <span className="btn-dark">{activeWorkout ? 'Resume Workout' : 'Start Workout'} ›</span>
           </button>
-          {!activeWorkout && upNext && (
-            <p className="lab" style={{ textAlign: 'center', margin: '10px 0 0' }}>
-              {upNext.name} is up next
-            </p>
-          )}
         </div>
 
         <div>
+          <div className="tiles">
+            {last ? (
+              <button className="tile" onClick={() => go({ name: 'history' })}>
+                <span className="row"><span className="lab">Last workout</span><span className="small">{last.workout.date.slice(5).replace('-', '/')}</span></span>
+                <span>
+                  <span className="num">{last.setCount}</span><span className="unit">sets</span>
+                  {'  '}
+                  <span className="num" style={{ fontSize: '1.2rem' }}>{Math.round(last.totalVolumeLb).toLocaleString()}</span><span className="unit">lb</span>
+                </span>
+                {last.prs.length > 0
+                  ? <span><span className="chip solid" style={{ margin: 0, fontSize: '0.62rem', padding: '3px 8px' }}>{exercises.get(last.prs[0]!.exerciseId)?.name ?? ''} PR ★{last.prs.length > 1 ? ` +${last.prs.length - 1}` : ''}</span></span>
+                  : <span className="small">{Math.max(1, Math.round(last.durationSec / 60))} min{last.activityCount > 0 ? ` · ${last.activityCount} timed` : ''}</span>}
+              </button>
+            ) : (
+              <div className="tile">
+                <span className="lab">Last workout</span>
+                <span className="num" style={{ color: 'var(--faint)' }}>—</span>
+                <span className="small">{loadedLast ? 'Your first one builds here' : ''}</span>
+              </div>
+            )}
+            <button className="tile" onClick={() => go({ name: 'food' })}>
+              <span className="row"><span className="lab">Meals</span><span className="plus-btn" aria-hidden="true">+</span></span>
+              <span className="t" style={{ fontSize: '0.95rem' }}>Log food</span>
+              <span className="small">Describe it, scan it, or pick a saved meal</span>
+            </button>
+          </div>
+
           {loadedLast && !last && !activeWorkout && (
-            <div className="card" style={{ marginTop: 14 }}>
-              <span className="lab lm">🎯 First visit? Do the Strength Check</span>
-              <span className="small" style={{ display: 'block', margin: '6px 0 10px' }}>
-                One easy session on six machines. On each: warm up light, then find a weight
-                where 8–12 good reps feel hard but you could do 2 more, and log it.
-                Every program after that starts from your real strength — no maxing out, ever.
-              </span>
+            <div className="card">
+              <span className="lab lm">🎯 First visit?</span>
+              <p className="t" style={{ fontSize: '0.95rem', margin: '4px 0 2px' }}>Do the Strength Check</p>
+              <p className="small" style={{ margin: 0, fontSize: '0.78rem' }}>
+                One easy session on six machines. On each, find a weight where 8–12 good reps feel hard but you could do 2 more.
+                Every program after that starts from your real strength.
+              </p>
               <button
-                className="ghost-btn"
-                onClick={async () => {
+                className="ghost-btn" style={{ marginTop: 12 }}
+                disabled={action.busy} onClick={() => void action.run(async () => {
                   const w = await api.startWorkout(STRENGTH_CHECK_ROUTINE_ID)
                   setActiveWorkout(w)
                   go({ name: 'workout' })
-                }}
+                })}
               >
-                Start the strength check →
+                Start the strength check
               </button>
             </div>
           )}
-
-          {last && (
-            <div className="card tappable" style={{ marginTop: 14 }} onClick={() => go({ name: 'history' })}>
-              <div className="row">
-                <span className="lab">Last workout</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="lab">{last.workout.date.slice(5).replace('-', '.')}</span>
-                  <span className="chev">›</span>
-                </span>
-              </div>
-              <div className="stat-strip" style={{ border: 0, paddingTop: 8, margin: '0 0 4px' }}>
-                <span><span className="num" style={{ fontSize: '1.35rem' }}>{last.setCount}</span><span className="lab">Sets</span></span>
-                <span><span className="num" style={{ fontSize: '1.35rem' }}>{Math.round(last.totalVolumeLb).toLocaleString()}</span><span className="lab">Lb vol</span></span>
-                <span><span className="num" style={{ fontSize: '1.35rem' }}>{Math.max(1, Math.round(last.durationSec / 60))}</span><span className="lab">Min</span></span>
-              </div>
-              {last.activityCount > 0 && <p className="small">{Number((last.timedDurationSec / 60).toFixed(1))} min timed activity · {last.activityCount} entries</p>}
-              {last.prs.length > 0 && (
-                <div>
-                  {last.prs.map((pr) => (
-                    <span key={pr.exerciseId} className="chip solid">
-                      {exercises.get(pr.exerciseId)?.name ?? pr.exerciseId} PR {pr.weightLb}×{pr.reps} ★
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="card tappable" style={{ marginTop: last ? 4 : 14 }} onClick={() => go({ name: 'food' })}>
-            <div className="row">
-              <b style={{ fontSize: '0.9rem' }}>Log food</b>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: 'var(--lime)', fontWeight: 800 }}>＋</span>
-                <span className="chev">›</span>
-              </span>
-            </div>
-            <span className="small">Calories and macros in a couple of taps</span>
-          </div>
         </div>
       </div>
     </div>

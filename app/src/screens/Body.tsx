@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import type { BodyMetricKey, BodyStatEntry, TapeEntry, TapeSite } from '../types'
 import { toDayKey } from '../types'
@@ -157,6 +158,8 @@ function CompositionView() {
   const [stats, setStats] = useState<BodyStatEntry[] | null>(null)
   const [logOpen, setLogOpen] = useState(false)
   const [form, setForm] = useState<Partial<Record<BodyMetricKey, string>>>({})
+  const action = useAction()
+  const notify = useFeedback()
   const [goalWeight, setGoalWeight] = useState(settings.bodyWeightGoalLb?.toString() ?? '')
   const [goalFat, setGoalFat] = useState(settings.bodyFatGoalPct?.toString() ?? '')
   const [height, setHeight] = useState(settings.heightIn ? fmtHeight(settings.heightIn) : '')
@@ -173,13 +176,13 @@ function CompositionView() {
     : undefined
 
   const saveGoals = async () => {
-    await api.saveSettings({
-      ...settings,
+    await api.patchSettings({
       bodyWeightGoalLb: parseNum(goalWeight),
       bodyFatGoalPct: parseNum(goalFat),
       heightIn: parseHeight(height),
     })
     await refreshSettings()
+    notify('Body goals saved')
   }
 
   const saveReading = async () => {
@@ -194,6 +197,7 @@ function CompositionView() {
     await refreshSettings()
     setForm({})
     setLogOpen(false)
+    notify('Reading saved')
     await reload()
   }
 
@@ -248,7 +252,7 @@ function CompositionView() {
             <label>Height</label>
             <input className="text-in" placeholder={'5\'5" or 65'} value={height} onChange={(e) => setHeight(e.target.value)} />
           </div>
-          <button className="ghost-btn" style={{ alignSelf: 'end' }} onClick={saveGoals}>Save</button>
+          <button className="ghost-btn" style={{ alignSelf: 'end' }} disabled={action.busy} onClick={() => void action.run(saveGoals)}>Save</button>
         </div>
         <span className="small" style={{ display: 'block', marginTop: 6 }}>Height fills in BMI automatically on weight-only entries.</span>
       </div>
@@ -269,7 +273,7 @@ function CompositionView() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="big-btn" onClick={saveReading}>Save reading</button>
+            <button className="big-btn" disabled={action.busy || !Object.values(form).some((v) => parseNum(v ?? '') !== undefined)} onClick={() => void action.run(saveReading)}>Save reading</button>
             <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} onClick={() => setLogOpen(false)}>Cancel</button>
           </div>
         </div>
@@ -301,6 +305,8 @@ function CompositionView() {
 
 function TapeView() {
   const { api } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [tapes, setTapes] = useState<TapeEntry[] | null>(null)
   const [logOpen, setLogOpen] = useState(false)
   const [form, setForm] = useState<Partial<Record<TapeSite, string>>>({})
@@ -324,6 +330,7 @@ function TapeView() {
     await api.addTape({ date: toDayKey(now), at: now.getTime(), sites })
     setForm({})
     setLogOpen(false)
+    notify('Tape session saved')
     await reload()
   }
 
@@ -388,7 +395,7 @@ function TapeView() {
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="big-btn" onClick={saveSession}>Save session</button>
+            <button className="big-btn" disabled={action.busy || !Object.values(form).some((v) => parseNum(v ?? '') !== undefined)} onClick={() => void action.run(saveSession)}>Save session</button>
             <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} onClick={() => setLogOpen(false)}>Cancel</button>
           </div>
         </div>

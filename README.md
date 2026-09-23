@@ -27,10 +27,11 @@ Optional: describe food in plain words to log calories/macros, and identify
 unknown machine QR codes (model, muscle groups, setup + form cues), powered by
 a self-hosted [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 (OpenAI-compatible) endpoint. The phone calls the proxy **directly**, so AI
-works only while the device can reach it (e.g. on the Tailscale tailnet); the
-AI buttons gray out otherwise and every manual flow is unchanged. Machine
-identifications are cached per QR code in the `machineAi` table (synced like
-everything else), so each sticker is only asked once.
+works only while the device can reach it (e.g. on the Tailscale tailnet). Each AI
+screen shows whether the connection is ready, checking, or unavailable. You can
+retry the connection or try a request directly; manual entry stays available.
+Machine identifications are cached per QR code in the `machineAi` table (synced
+like everything else), and can be revised using the guide’s correction field.
 
 Setup:
 
@@ -214,3 +215,90 @@ host port:
 Use `/` as the internal path. Do not assign a domain to `convex-deploy`.
 Redeploy the Compose application after changing a Dokploy domain. See
 `DEPLOY.md` for the rest of the deployment flow.
+
+## Mobile quality-of-life checks
+
+AI requests show elapsed time, automatic retry status, cancellation, and recoverable errors.
+Food review always includes a correction box; text and photo corrections include manual edits.
+Machine guides and starter programs accept feedback, and programs stay separate by machine and exercise.
+Food and workout drafts survive tab navigation in the current app session (not a reload).
+Food/drink additions and deletions offer undo; linked nutrition/hydration updates commit together.
+Rest timers continue across tabs, support adding 30 seconds, and announce completion.
+
+From `app/`, with the dev server running:
+
+```bash
+npx playwright-core install chromium
+BASE_URL=http://localhost:5173 npm run e2e:qol
+BASE_URL=http://localhost:5173 npm run e2e:machine-ai
+BASE_URL=http://localhost:5173 npm run e2e
+```
+
+The AI checks use deterministic proxy responses, including failed, delayed, and malformed
+responses. They do not validate a live proxy, model quality, or real-device camera permissions.
+The QoL suite saves screenshots under `app/e2e/qol-audit/` and checks 320, 375, 390, 430,
+and 1280px layouts. Existing walkthrough scripts now exit unsuccessfully when a step fails.
+
+
+## Multi-use machines and muscle maps
+
+Save one physical station with every supported exercise, then choose a movement on its
+page. Choices show the movement, target muscles, and progress in the active routine.
+An explicit exercise opened from the workout is preserved; otherwise the next unfinished
+routine movement on that station is selected, then the last used movement, then the default.
+Previewing does not write sets or change the remembered choice. Opening an exercise for
+logging saves `lastExerciseId`; each logged set retains its exercise and machine ids.
+AI programs remain keyed by machine + exercise. Multi-use stations do not automatically
+generate a program for the first exercise when first saved.
+
+Front/back SVG muscle maps run offline for all 24 built-in exercises, including Hip
+Adductor for dual inner/outer-thigh stations. Lime marks main groups, blue marks assisting
+groups, and text labels provide the same information. Maps are schematic general guidance,
+not effort percentages or personalized advice. Unknown/custom exercises fall back to their
+saved muscle groups without inventing a main/assisting ranking. Previews are available on
+machine setup/editing, saved machines, routine editing, and the workout screen.
+
+Machine-wide seat/notes remain shared. History and strength baselines are grouped by
+exercise across stations. Removing a supported exercise preserves past sets and AI programs.
+Partial machine writes merge within a local transaction to preserve unrelated changes.
+
+With the dev server running, from `app/`:
+
+```bash
+BASE_URL=http://localhost:5173 npm run e2e:machine-muscles
+```
+
+This suite checks routine choice, map regions, remembering versus previewing, linked set
+identity, partial writes, preserved history, catalog coverage, and 320–1280px layouts.
+
+
+## Rest chime and saved-set corrections
+
+Rest completion plays one short, low-level two-note sine chime (523/659Hz with a soft
+attack and fade). Settings → Rest timer sound includes a persistent on/off switch and
+a preview. Existing settings default to sound on. A user tap/key press primes Web Audio
+before asynchronous saves; unavailable audio never blocks workout logging. Skip is silent,
+and the current sound preference is read when rest completes. Device media volume applies;
+a locked phone or suspended/background browser may prevent timely playback.
+
+Use Edit set beneath a logged set, or Stats → Review / edit sets for a finished workout.
+Reps and weight can be corrected without adding a set or restarting rest. Changed sets
+retain an Edited label, the latest correction time, and the original weight/reps (visible
+in the editor). This is an original/latest record, not a full revision history. No-op
+saves do not mark a set edited. Original IDs, exercise/machine links, set number, logging
+time, and workout finish time are preserved. Summary totals/highlights are recalculated;
+a baseline derived from a corrected set is recalculated to avoid stale strength targets.
+Atomic validation rejects invalid or stale edits. Optional fields are included in existing
+backups and sync records; older sets work without migration.
+
+From `app/`, with the dev server running:
+
+```bash
+BASE_URL=http://localhost:5173 npm run e2e:rest-edits
+```
+
+The suite checks real browser audio scheduling, skip/mute behavior, edits during/after
+workouts, validation, duplicate taps, preserved identity/duration, baseline corrections,
+backups, and mobile layouts. It renders the same audio graph into a WAV for preview and
+checks its peak amplitude and silent tail. Hardware speaker loudness and locked-phone
+playback still depend on the device/browser.

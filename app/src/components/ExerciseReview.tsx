@@ -549,4 +549,3 @@ export function ExerciseReview({ result, exercises, saving = false, error, onCon
     </div>
   )
 }
-

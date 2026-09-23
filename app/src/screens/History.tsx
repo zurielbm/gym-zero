@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAction, useFeedback } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import { GearIcon } from '../components/icons'
 import { SYNC_APPLIED_EVENT } from '../data/sync'
@@ -46,12 +47,15 @@ function WeekBars({ days, metric, target, targetLabel, barClass, gapUnlogged, he
 
 export function HistoryScreen() {
   const { api, settings, refreshSettings, exercises, go } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const [week, setWeek] = useState<WeekActivity | null>(null)
   const [foodWeek, setFoodWeek] = useState<WeekFoodStats | null>(null)
   const [recent, setRecent] = useState<WorkoutSummary[]>([])
   const [latestStat, setLatestStat] = useState<BodyStatEntry | undefined>(undefined)
   const [weightTrend, setWeightTrend] = useState<Array<{ at: number; value: number }>>([])
   const [weightIn, setWeightIn] = useState('')
+  const [routineNames, setRoutineNames] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     const load = () => {
@@ -60,6 +64,7 @@ export function HistoryScreen() {
       api.listRecentWorkouts(10).then(setRecent)
       api.getLatestBodyStat().then(setLatestStat)
       api.getBodyTrend('weightLb', 30).then(setWeightTrend)
+      api.listRoutines().then((rs) => setRoutineNames(new Map(rs.map((r) => [r.id, `${r.emoji ? `${r.emoji} ` : ''}${r.name}`]))))
     }
     load()
     // pulled sync records land in Dexie behind React's back; re-read on apply
@@ -77,6 +82,7 @@ export function HistoryScreen() {
     setLatestStat(await api.getLatestBodyStat())
     setWeightTrend(await api.getBodyTrend('weightLb', 30))
     setWeightIn('')
+    notify('Weight saved')
   }
 
   const didCount = week?.days.filter((d) => d.workoutId).length ?? 0
@@ -113,44 +119,126 @@ export function HistoryScreen() {
     return `You averaged ${fw.avg.calories.toLocaleString()} kcal on ${dayWord} — ${verdict}.${gapNote}`
   }
 
+  const curVol = week?.weeklyVolumeLb.at(-1) ?? 0
+  const curCardio = week?.weeklyCardioMinutes.at(-1) ?? 0
+  const weightDelta = (() => {
+    if (weightTrend.length < 2) return null
+    const first = weightTrend[0]!.value
+    const lastV = weightTrend[weightTrend.length - 1]!.value
+    return Math.round((lastV - first) * 10) / 10
+  })()
+
   return (
     <div className="page wide">
       <div className="row">
-        <span className="lab">This week · {didCount} workout{didCount === 1 ? '' : 's'}</span>
-        <button className="icon-btn" title="Settings" onClick={() => go({ name: 'settings' })}>
+        <h1 className="p-h1">Stats<span className="dot">.</span></h1>
+        <button className="icon-btn" title="Settings" aria-label="Settings" onClick={() => go({ name: 'settings' })}>
           <GearIcon />
         </button>
       </div>
-      <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Stats<span className="dot">.</span></h1>
 
       <div className="hi-grid">
         <div>
-          <p className="section-label">Fuel · last 7 days</p>
+          {week && (
+            <div className="card">
+              <div className="row" style={{ marginBottom: 12 }}>
+                <span className="t" style={{ fontSize: '0.95rem' }}>This week</span>
+                <span className="small">{didCount} workout{didCount === 1 ? '' : 's'}</span>
+              </div>
+              <div className="cal-strip">
+                {week.days.map((d, i) => (
+                  <div key={d.date} className={`cal-day${d.workoutId ? ' did' : ''}${i === week.days.length - 1 ? ' today' : ''}`} title={d.routineName ?? undefined}>
+                    <b>{d.date.slice(8).replace(/^0/, '')}</b>
+                    <span>{dayLetter(d.date)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="tiles">
+            <div className="tile">
+              <span className="lab">Volume · week</span>
+              <span><span className="num">{curVol >= 10000 ? `${(curVol / 1000).toFixed(1)}k` : Math.round(curVol).toLocaleString()}</span><span className="unit">lb</span></span>
+              <span className="small" style={volTrend !== null && volTrend >= 0 ? { color: 'var(--lime)' } : undefined}>
+                {volTrend !== null ? `${volTrend >= 0 ? '▲' : '▼'} ${Math.abs(volTrend)}% vs last week` : 'Lb lifted this week'}
+              </span>
+            </div>
+            <div className="tile">
+              <span className="lab">Cardio · week</span>
+              <span><span className="num">{Math.round(curCardio)}</span><span className="unit">min</span></span>
+              <span className="small">timed activity</span>
+            </div>
+            <div className="tile">
+              <span className="lab">Weight</span>
+              <span>{settings.bodyWeightLb ? <><span className="num">{settings.bodyWeightLb}</span><span className="unit">lb</span></> : <span className="num">—</span>}</span>
+              <span className="small" style={weightDelta !== null && weightDelta <= 0 ? { color: 'var(--lime)' } : undefined}>
+                {weightDelta !== null ? `${weightDelta > 0 ? '▲' : '▼'} ${Math.abs(weightDelta)} lb / 30 d` : settings.bodyWeightGoalLb ? `goal ${settings.bodyWeightGoalLb} lb` : 'log a weigh-in below'}
+              </span>
+            </div>
+            <div className="tile">
+              <span className="lab">Protein hits</span>
+              <span><span className="num">{proteinHits}</span><span className="unit">/ 7 days</span></span>
+              <span className="small">{foodWeek && anyFood ? `avg ${foodWeek.avg.protein} g` : 'no food logged'}</span>
+            </div>
+          </div>
+
+          {week && (
+            <div className="card">
+              <div className="row">
+                <span className="t" style={{ fontSize: '0.95rem' }}>Weekly volume</span>
+                <span className="small">6 wk · lb</span>
+              </div>
+              <div className="spark">
+                {week.weeklyVolumeLb.map((v, i) => (
+                  <i
+                    key={i}
+                    className={i === week.weeklyVolumeLb.length - 1 ? 'hi' : ''}
+                    style={{ height: `${Math.max(5, (v / maxVol) * 100)}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {week && <div className="card">
+            <div className="row">
+              <span className="t" style={{ fontSize: '0.95rem' }}>Cardio time</span>
+              <span className="small">6 wk · min</span>
+            </div>
+            <div className="spark" role="img" aria-label={`Weekly cardio minutes: ${week.weeklyCardioMinutes.map((m) => Math.round(m)).join(', ')}`}>
+              {week.weeklyCardioMinutes.map((minutes, i) => <i key={i} className={i === 5 ? 'hi' : ''}
+                title={`${Number(minutes.toFixed(1))} cardio min`}
+                style={{ height: `${Math.max(2, minutes / Math.max(1, ...week.weeklyCardioMinutes) * 100)}%` }} />)}
+            </div>
+            <p className="small" style={{ margin: '8px 0 0' }}>{Number((week.weeklyCardioMinutes.at(-1) ?? 0).toFixed(1))} cardio min this week</p>
+          </div>}
+
           {foodWeek && !anyFood && (
             <div className="card">
-              <span className="lab">No food logged yet</span>
-              <span className="small" style={{ display: 'block', margin: '4px 0 10px' }}>
-                Log a meal on the Fuel tab and your week shows up here.
-              </span>
-              <button className="ghost-btn" style={{ width: 'auto', padding: '12px 16px' }} onClick={() => go({ name: 'food' })}>
-                Log food ›
-              </button>
+              <div className="row">
+                <div>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>No food logged yet</span>
+                  <span className="small" style={{ display: 'block' }}>Log a meal and your week shows up here.</span>
+                </div>
+                <button className="ghost-btn" style={{ width: 'auto' }} onClick={() => go({ name: 'food' })}>Log food ›</button>
+              </div>
             </div>
           )}
           {foodWeek && anyFood && (
             <>
               <div className="card">
                 <div className="row">
-                  <span className="lab">Calories · avg on logged days</span>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>Calories · last 7 days</span>
                   {calPct !== null && (
                     <span className={`chip ${calImproved ? 'green' : ''}`} style={{ margin: 0, whiteSpace: 'nowrap' }}>
                       {calPct >= 0 ? '▲' : '▼'} {Math.abs(calPct)}% vs prior wk
                     </span>
                   )}
                 </div>
-                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 2 }}>
+                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 6 }}>
                   {foodWeek.avg.calories.toLocaleString()}
-                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.calorieTarget.toLocaleString()} kcal</span>
+                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.calorieTarget.toLocaleString()} kcal avg</span>
                 </span>
                 <WeekBars days={foodWeek.days} metric={(d) => d.calories} gapUnlogged
                   target={settings.calorieTarget} targetLabel={`target ${settings.calorieTarget.toLocaleString()}`} />
@@ -159,16 +247,16 @@ export function HistoryScreen() {
 
               <div className="card">
                 <div className="row">
-                  <span className="lab">Protein · avg on logged days</span>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>Protein · last 7 days</span>
                   {proteinPct !== null && (
                     <span className={`chip ${proteinPct >= 0 ? 'green' : ''}`} style={{ margin: 0 }}>
                       {proteinPct >= 0 ? '▲' : '▼'} {Math.abs(proteinPct)}%
                     </span>
                   )}
                 </div>
-                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 2 }}>
+                <span className="num" style={{ fontSize: '1.4rem', display: 'block', marginTop: 6 }}>
                   {foodWeek.avg.protein.toLocaleString()}
-                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.proteinTarget.toLocaleString()} g</span>
+                  <span className="small" style={{ fontFamily: 'var(--body)' }}> / {settings.proteinTarget.toLocaleString()} g avg</span>
                 </span>
                 <WeekBars days={foodWeek.days} metric={(d) => d.protein} gapUnlogged barClass="ink" height={40}
                   target={settings.proteinTarget} targetLabel={`${settings.proteinTarget} g`} />
@@ -181,7 +269,7 @@ export function HistoryScreen() {
 
               <div className="card">
                 <div className="row">
-                  <span className="lab">Water</span>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>Water</span>
                   <span className="num" style={{ fontSize: '1.1rem' }}>
                     {foodWeek.avgWaterOz}
                     <span className="small" style={{ fontFamily: 'var(--body)' }}> / about {waterOzTarget} oz avg</span>
@@ -206,7 +294,7 @@ export function HistoryScreen() {
 
               {foodWeek.weeklyAvgCalories.filter((v) => v > 0).length >= 2 && (
                 <div className="card">
-                  <span className="lab">Calorie trend · 4 wk</span>
+                  <span className="t" style={{ fontSize: '0.95rem' }}>Calorie trend · 4 wk</span>
                   <div className="spark" style={{ height: 40 }}>
                     {foodWeek.weeklyAvgCalories.map((v, i) => (
                       <i
@@ -216,73 +304,23 @@ export function HistoryScreen() {
                       />
                     ))}
                   </div>
-                  <span className="lab" style={{ display: 'block', marginTop: 6 }}>Avg kcal on logged days, per week</span>
+                  <span className="small" style={{ display: 'block', marginTop: 6 }}>Avg kcal on logged days, per week</span>
                 </div>
               )}
             </>
           )}
 
-          <p className="section-label">Training</p>
-          {week && (
-            <div className="cal-strip">
-              {week.days.map((d) => (
-                <div key={d.date} className={`cal-day${d.workoutId ? ' did' : ''}`}>
-                  <b>{dayLetter(d.date)}</b>
-                  <span className="blk" />
-                  <span style={{ fontSize: '0.625rem', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {d.routineName ?? (d.workoutId ? '✓' : '—')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {week && (
-            <div className="card">
-              <div className="row">
-                <span className="lab">Weekly volume · 6 wk</span>
-                {volTrend !== null && (
-                  <span className={`chip ${volTrend >= 0 ? 'green' : ''}`} style={{ margin: 0 }}>
-                    {volTrend >= 0 ? '▲' : '▼'} {Math.abs(volTrend)}%
-                  </span>
-                )}
-              </div>
-              <div className="spark">
-                {week.weeklyVolumeLb.map((v, i) => (
-                  <i
-                    key={i}
-                    className={i === week.weeklyVolumeLb.length - 1 ? 'hi' : ''}
-                    style={{ height: `${Math.max(5, (v / maxVol) * 100)}%` }}
-                  />
-                ))}
-              </div>
-              <span className="lab" style={{ display: 'block', marginTop: 6 }}>Lb lifted per week</span>
-            </div>
-          )}
-
-          {week && <div className="card">
-            <span className="lab">Cardio time · 6 wk</span>
-            <div className="spark" role="img" aria-label={`Weekly cardio minutes: ${week.weeklyCardioMinutes.map((m) => Math.round(m)).join(', ')}`}>
-              {week.weeklyCardioMinutes.map((minutes, i) => <i key={i} className={i === 5 ? 'hi' : ''}
-                title={`${Number(minutes.toFixed(1))} cardio min`}
-                style={{ height: `${Math.max(2, minutes / Math.max(1, ...week.weeklyCardioMinutes) * 100)}%` }} />)}
-            </div>
-            <p className="small">{Number((week.weeklyCardioMinutes.at(-1) ?? 0).toFixed(1))} cardio min this week</p>
-          </div>}
-
           <div className="card">
             <div className="row">
               <div>
-                <span className="lab">Body</span>
+                <span className="t" style={{ fontSize: '0.95rem' }}>Body</span>
                 <span className="num" style={{ fontSize: '1.1rem', display: 'block', marginTop: 2 }}>
                   {settings.bodyWeightLb ? `${settings.bodyWeightLb} lb` : '—'}
                   {latestStat?.bodyFatPct !== undefined && <span className="small" style={{ fontFamily: 'var(--body)' }}> · {latestStat.bodyFatPct}% fat</span>}
                   {settings.bodyWeightGoalLb ? <span className="small" style={{ fontFamily: 'var(--body)' }}> · goal {settings.bodyWeightGoalLb} lb</span> : null}
                 </span>
               </div>
-              <button className="ghost-btn" style={{ width: 'auto', padding: '12px 16px' }} onClick={() => go({ name: 'body' })}>
-                Open ›
-              </button>
+              <button className="text-button" onClick={() => go({ name: 'body' })}>Open ›</button>
             </div>
             {weightTrend.length >= 2 && (() => {
               const values = weightTrend.map((p) => p.value)
@@ -303,8 +341,8 @@ export function HistoryScreen() {
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <input className="text-in" inputMode="decimal" placeholder="182.4" value={weightIn}
                 onChange={(e) => setWeightIn(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && saveWeight()} />
-              <button className="ghost-btn" style={{ width: 'auto', padding: '0 18px' }} onClick={saveWeight}>
+                onKeyDown={(e) => { if (e.key === 'Enter') void action.run(saveWeight) }} />
+              <button className="big-btn" style={{ width: 'auto', padding: '0 18px', minHeight: 44 }} disabled={action.busy || !Number.isFinite(Number(weightIn)) || Number(weightIn) <= 0} onClick={() => void action.run(saveWeight)}>
                 Log
               </button>
             </div>
@@ -313,33 +351,32 @@ export function HistoryScreen() {
         </div>
 
         <div>
-          <p className="section-label">Sessions</p>
+          <p className="section-label">Recent workouts</p>
           {recent.map((s) => (
             <div key={s.workout.id} className="card">
               <div className="row">
-                <span className="num" style={{ fontSize: '1.05rem' }}>
-                  {s.workout.date.slice(5).replace('-', '/')}
-                </span>
-                <span className="lab">{Math.max(1, Math.round(s.durationSec / 60))} min</span>
+                <span className="t" style={{ fontSize: '0.95rem' }}>{(s.workout.routineId && routineNames.get(s.workout.routineId)) ?? 'Workout'}</span>
+                <span className="small">{s.workout.date.slice(5).replace('-', '/')} · {Math.max(1, Math.round(s.durationSec / 60))} min</span>
               </div>
-              <button className="back-link" style={{ marginTop: 8 }} onClick={() => go({ name: 'summary', workoutId: s.workout.id })}>View workout →</button>
-              <span className="small">
+              <span className="small" style={{ display: 'block', margin: '4px 0 0' }}>
                 {s.setCount} set{s.setCount === 1 ? '' : 's'} · {Math.round(s.totalVolumeLb).toLocaleString()} lb
-                {s.activityCount > 0 && <> · {Number((s.timedDurationSec / 60).toFixed(1))} min timed activity · {Number(s.distanceMiles.toFixed(2))} mi</>}
+                {s.activityCount > 0 && <> · {Number((s.timedDurationSec / 60).toFixed(1))} min timed · {Number(s.distanceMiles.toFixed(2))} mi</>}
+              </span>
+              {s.prs.length > 0 && <div style={{ marginTop: 8 }}>
                 {s.prs.map((pr) => (
-                  <span key={pr.exerciseId} className="pr-flag">
-                    {exercises.get(pr.exerciseId)?.name ?? ''} PR {pr.weightLb}×{pr.reps}
+                  <span key={pr.exerciseId} className="chip solid" style={{ fontSize: '0.64rem', padding: '3px 8px' }}>
+                    {exercises.get(pr.exerciseId)?.name ?? ''} PR {pr.weightLb}×{pr.reps} ★
                   </span>
                 ))}
-              </span>
+              </div>}
               {s.workout.notes && <span className="small" style={{ display: 'block', marginTop: 4 }}>“{s.workout.notes}”</span>}
+              <button className="text-button sm" style={{ display: 'block', marginTop: 6 }} aria-label={`Review workout from ${s.workout.date}`} onClick={() => go({ name: 'summary', workoutId: s.workout.id })}>Review / edit sets ›</button>
             </div>
           ))}
           {recent.length === 0 && (
             <div className="card">
-              <span className="num" style={{ fontSize: '2.4rem', WebkitTextStroke: '1px var(--ghost)', color: 'transparent', display: 'block' }}>00</span>
-              <span className="lab" style={{ display: 'block', marginTop: 4 }}>No sessions yet</span>
-              <span className="small">Your history builds here. First one today?</span>
+              <span className="t" style={{ fontSize: '0.95rem' }}>No sessions yet</span>
+              <span className="small" style={{ display: 'block' }}>Your history builds here. First one today?</span>
             </div>
           )}
         </div>

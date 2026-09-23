@@ -1,0 +1,362 @@
+[
+  {
+    "version": "before",
+    "scenario": "home",
+    "file": "before-home.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "fuel",
+    "file": "before-fuel.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "food-entry",
+    "file": "before-food-entry.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "ai-working",
+    "file": "before-ai-working.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "ai-question",
+    "file": "before-ai-question.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "ai-review",
+    "file": "before-ai-review.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "ai-error",
+    "file": "before-ai-error.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "food-saved",
+    "file": "before-food-saved.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "food-edit",
+    "file": "before-food-edit.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "empty-workout",
+    "file": "before-empty-workout.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "workout",
+    "file": "before-workout.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "rest-away",
+    "file": "before-rest-away.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "routine-editor",
+    "file": "before-routine-editor.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "scanner",
+    "file": "before-scanner.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "machine-unknown",
+    "file": "before-machine-unknown.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "machine-guide",
+    "file": "before-machine-guide.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "program",
+    "file": "before-program.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "settings",
+    "file": "before-settings.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "weight-saved",
+    "file": "before-weight-saved.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "before",
+    "scenario": "summary",
+    "file": "before-summary.png",
+    "width": 390,
+    "height": 844,
+    "source": "baseline 00f64ed",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "home",
+    "file": "after-home.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "fuel",
+    "file": "after-fuel.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "food-entry",
+    "file": "after-food-entry.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "ai-working",
+    "file": "after-ai-working.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "ai-question",
+    "file": "after-ai-question.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "ai-review",
+    "file": "after-ai-review.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "ai-error",
+    "file": "after-ai-error.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "food-saved",
+    "file": "after-food-saved.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "food-edit",
+    "file": "after-food-edit.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "empty-workout",
+    "file": "after-empty-workout.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "workout",
+    "file": "after-workout.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "rest-away",
+    "file": "after-rest-away.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "routine-editor",
+    "file": "after-routine-editor.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "scanner",
+    "file": "after-scanner.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "machine-unknown",
+    "file": "after-machine-unknown.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "machine-guide",
+    "file": "after-machine-guide.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "program",
+    "file": "after-program.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "settings",
+    "file": "after-settings.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "weight-saved",
+    "file": "after-weight-saved.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  },
+  {
+    "version": "after",
+    "scenario": "summary",
+    "file": "after-summary.png",
+    "width": 390,
+    "height": 844,
+    "source": "working tree",
+    "fixture": "sample data; mocked AI"
+  }
+]

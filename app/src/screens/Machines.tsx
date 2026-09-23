@@ -114,7 +114,7 @@ export function MachinesScreen({ notice }: { notice?: string }) {
               return (
                 <li key={machine.id}>
                   <button
-                    className="machine-card tappable"
+                    className="card machine-card tappable"
                     onClick={() => go({ name: 'machine-settings', machineId: machine.id, from: 'machines' })}
                   >
                     <span className="machine-card-main">

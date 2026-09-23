@@ -59,6 +59,8 @@ export interface GymMachine {
   exerciseId: string
   /** All movements this physical station supports. Legacy rows omit this. */
   exerciseIds?: string[]
+  /** Last movement explicitly opened for logging; previews do not change it. */
+  lastExerciseId?: string
   equipmentModelId?: string
   /** Raw QR URL scanned on this machine (may be unknown to the catalog). */
   qrUrl?: string
@@ -83,7 +85,9 @@ export const machineSupportsExercise = (
 /** Canonical shape written for every new or edited machine. */
 export function normalizeMachineExercises<T extends GymMachine>(machine: T): T {
   const exerciseIds = machineExerciseIds(machine)
-  return { ...machine, exerciseId: exerciseIds[0] ?? machine.exerciseId, exerciseIds }
+  return { ...machine, exerciseId: exerciseIds[0] ?? machine.exerciseId, exerciseIds,
+    ...(machine.lastExerciseId && !exerciseIds.includes(machine.lastExerciseId) ? { lastExerciseId: undefined } : {}),
+  }
 }
 
 /** Stable key for one starter program per physical machine and movement. */
@@ -125,6 +129,10 @@ export interface WorkoutSet {
   reps: number
   setNumber: number
   loggedAt: number
+  /** Latest correction time; original logging time and set identity never change. */
+  editedAt?: number
+  /** Values before the first correction, retained through subsequent edits. */
+  originalValues?: { weightLb: number; reps: number }
   recordingFormat?: 'weight-reps' | 'reps'
 }
 
@@ -237,6 +245,8 @@ export interface Settings {
   waterTargetOz?: number
   /** default rest between sets, seconds */
   restSeconds: number
+  /** Soft rest-complete chime; existing settings default to enabled. */
+  restSoundEnabled?: boolean
   bodyWeightLb?: number
   bodyWeightGoalLb?: number
   /** entered once; lets quick weigh-ins auto-compute BMI */
@@ -434,6 +444,7 @@ export interface DataAPI {
   listMachines(): Promise<GymMachine[]>
   getMachine(id: string): Promise<GymMachine | undefined>
   saveMachine(m: GymMachine): Promise<void>
+  patchMachine(id: string, patch: Partial<GymMachine>): Promise<GymMachine>
   resolveQr(url: string): Promise<QrResolution>
   getEquipmentModel(id: string): Promise<EquipmentModel | undefined>
   getMachineAiInfo(qrUrl: string): Promise<MachineAiInfo | undefined>
@@ -452,7 +463,8 @@ export interface DataAPI {
   cancelWorkout(workoutId: string): Promise<void>
   finishWorkout(workoutId: string, notes?: string): Promise<WorkoutSummary>
   listSets(workoutId: string): Promise<WorkoutSet[]>
-  logSet(s: Omit<WorkoutSet, 'id' | 'loggedAt'>): Promise<WorkoutSet>
+  logSet(s: Omit<WorkoutSet, 'id' | 'loggedAt' | 'editedAt' | 'originalValues'>): Promise<WorkoutSet>
+  updateSet(id: string, values: Pick<WorkoutSet, 'weightLb' | 'reps'>, expected?: Pick<WorkoutSet, 'weightLb' | 'reps' | 'editedAt'>): Promise<WorkoutSet>
   deleteSet(id: string): Promise<void>
   listActivities(workoutId: string): Promise<ActivityLog[]>
   logActivity(entry: Omit<ActivityLog, 'id' | 'loggedAt' | 'schemaVersion' | 'categories'>): Promise<ActivityLog>
@@ -504,6 +516,7 @@ export interface DataAPI {
   getWeekActivity(): Promise<WeekActivity>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
+  patchSettings(patch: Partial<Settings>): Promise<void>
 }
 
 /** Sensible default meal slot from the current hour. */

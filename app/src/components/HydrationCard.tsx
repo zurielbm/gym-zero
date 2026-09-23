@@ -1,6 +1,10 @@
+import { liveQuery } from 'dexie'
+import { useAction, useFeedback } from './Feedback'
+import { addDrinkWithFood, deleteDrinkWithUndo } from '../data/food-actions'
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
 import { Seg } from './Seg'
+import { Ring } from './Ring'
 import { fmtHalf, todayWorkoutMinutes, waterTargetOz, workoutBumpOz } from '../lib/hydration'
 import type { Container, DrinkEntry, DrinkKind } from '../types'
 import { currentMealSlot, toDayKey } from '../types'
@@ -12,6 +16,8 @@ const fmtTime = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'num
 /** Tap-a-container hydration logging: register real vessels once, count refills. */
 export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void }) {
   const { api, settings } = useApp()
+  const action = useAction()
+  const notify = useFeedback()
   const today = toDayKey(new Date())
   const [containers, setContainers] = useState<Container[]>([])
   const [drinks, setDrinks] = useState<DrinkEntry[]>([])
@@ -25,10 +31,12 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
   }, [api, today])
 
   useEffect(() => {
-    void refresh()
-    api.listContainers().then(setContainers)
-    todayWorkoutMinutes(api, today).then(setTrainedMin)
-  }, [api, refresh, today])
+    const subscription = liveQuery(async () => ({ drinks: await api.listDrinks(today), containers: await api.listContainers(), minutes: await todayWorkoutMinutes(api, today) })).subscribe({
+      next: (data) => { setDrinks(data.drinks); setContainers(data.containers); setTrainedMin(data.minutes) },
+      error: () => notify('Could not load hydration. Please reload.', { error: true }),
+    })
+    return () => subscription.unsubscribe()
+  }, [api, today, notify])
 
   const totalOz = Math.round(drinks.reduce((total, d) => total + d.volumeOz, 0))
   const target = waterTargetOz(settings, trainedMin)
@@ -39,32 +47,24 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
 
   const logDrink = async (c: Container) => {
     const volumeOz = Math.round(c.volumeOz * fraction * 10) / 10
-    // caloric containers (shakes, soda) write both ledgers from the one tap;
-    // the pair is linked so deleting either half removes the other
-    let foodEntryId: string | undefined
-    if (c.calories && Math.round(c.calories * fraction) > 0) {
-      const food = await api.addFood({
-        date: today, meal: currentMealSlot(), name: c.name,
-        detail: `from drink log · ${volumeOz} oz`,
-        calories: Math.round(c.calories * fraction),
-        protein: Math.round((c.protein ?? 0) * fraction),
-      })
-      foodEntryId = food.id
-    }
-    await api.addDrink({
-      date: today, at: Date.now(), kind: c.kind, volumeOz,
-      containerId: c.id, name: c.name, foodEntryId,
-    })
+    const food = c.calories && Math.round(c.calories * fraction) > 0 ? {
+      date: today, meal: currentMealSlot(), name: c.name,
+      detail: `from drink log · ${volumeOz} oz`, calories: Math.round(c.calories * fraction),
+      protein: Math.round((c.protein ?? 0) * fraction),
+    } : undefined
+    const drink = await addDrinkWithFood({
+      date: today, at: Date.now(), kind: c.kind, volumeOz, containerId: c.id, name: c.name,
+    }, food)
+    notify(`${volumeOz} oz ${c.name.toLowerCase()} logged${food ? ' · calories included' : ''}`, { undo: async () => { await api.deleteDrink(drink.id); onFoodChanged?.() } })
     setFraction(1)
     void refresh()
-    if (foodEntryId) onFoodChanged?.()
+    if (food) onFoodChanged?.()
   }
 
   const removeDrink = async (id: string) => {
-    const hadFood = !!drinks.find((d) => d.id === id)?.foodEntryId
-    await api.deleteDrink(id)
-    void refresh()
-    if (hadFood) onFoodChanged?.()
+    const undo = await deleteDrinkWithUndo(id)
+    notify('Drink removed', { undo })
+    onFoodChanged?.()
   }
 
   const addContainer = async () => {
@@ -72,14 +72,14 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
     if (!form.name.trim() || !isFinite(volumeOz) || volumeOz <= 0) return
     const calories = parseInt(form.cal, 10)
     const protein = parseInt(form.pro, 10)
-    const saved = await api.saveContainer({
+    await api.saveContainer({
       name: form.name.trim(), emoji: kindEmoji[form.kind], volumeOz,
       kind: form.kind,
       calories: isFinite(calories) && calories > 0 ? calories : undefined,
       protein: isFinite(protein) && protein > 0 ? protein : undefined,
       sortOrder: (containers[containers.length - 1]?.sortOrder ?? -1) + 1,
     })
-    setContainers((old) => [...old, saved])
+    notify('Container saved')
     setForm({ name: '', oz: '', kind: 'water', cal: '', pro: '' })
   }
 
@@ -108,17 +108,18 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
   return (
     <div className="card">
       <div className="row">
-        <span className="lab">Hydration</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Ring value={totalOz} target={target} color="var(--water)" size="sm" label={`Water ${totalOz} of ${target} oz`}>{Math.round(pct)}%</Ring>
+          <div>
+            <span className="lab">Hydration</span>
+            <span className="num" style={{ display: 'block', fontSize: '1.3rem' }}>
+              {totalOz}<span className="of" style={{ fontFamily: 'var(--body)', fontSize: '0.7rem', color: 'var(--muted)', fontWeight: 600 }}> / {target} oz</span>
+            </span>
+          </div>
+        </div>
         {trainedMin > 0 && <span className="lab lm">Trained · +{workoutBumpOz(trainedMin)} oz</span>}
       </div>
-      <div className="macro-row" style={{ border: 0, margin: 0, paddingTop: 8 }}>
-        <span className="lab">Water</span>
-        <span className="num">
-          {totalOz}<span className="of"> / {target} oz</span>
-        </span>
-      </div>
-      <div className="bar"><i className="water" style={{ width: `${pct}%` }} /></div>
-      <span className="small" style={{ display: 'block', marginTop: 8, ...(totalOz >= target ? { color: 'var(--lime)' } : {}) }}>
+      <span className="small" style={{ display: 'block', marginTop: 10, ...(totalOz >= target ? { color: 'var(--lime)' } : {}) }}>
         {words()}
       </span>
       {trainedMin >= 60 && !hadElectrolytes && (
@@ -171,7 +172,7 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }}
-              disabled={!form.name.trim() || !(parseFloat(form.oz) > 0)} onClick={() => void addContainer()}>
+              disabled={action.busy || !form.name.trim() || !(parseFloat(form.oz) > 0)} onClick={() => void action.run(addContainer)}>
               Add container
             </button>
             <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} onClick={() => setManage(false)}>
@@ -181,9 +182,9 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
         </div>
       ) : (
         <>
-          <div style={{ marginTop: 12 }}>
+          <div className="chips" style={{ marginTop: 12 }}>
             {containers.map((c) => (
-              <button key={c.id} type="button" className="chip green btn" onClick={() => void logDrink(c)}>
+              <button key={c.id} type="button" className="chip green btn" disabled={action.busy} onClick={() => void action.run(() => logDrink(c))}>
                 {c.emoji ? `${c.emoji} ` : ''}{c.name} · {fraction === 1 ? `${c.volumeOz}` : `${Math.round(c.volumeOz * fraction * 10) / 10}`} oz
               </button>
             ))}
@@ -211,7 +212,7 @@ export function HydrationCard({ onFoodChanged }: { onFoodChanged?: () => void })
                 {containers.find((c) => c.id === d.containerId)?.emoji ?? kindEmoji[d.kind]} {d.name ?? d.kind} · {d.volumeOz} oz
                 <span className="small" style={{ marginLeft: 8 }}>{fmtTime(d.at)}</span>
               </span>
-              <button className="del" title="Delete" onClick={() => void removeDrink(d.id)}>✕</button>
+              <button className="del" title="Delete" aria-label={`Delete ${d.name ?? d.kind}`} disabled={action.busy} onClick={() => void action.run(() => removeDrink(d.id))}>✕</button>
             </div>
           ))}
         </div>

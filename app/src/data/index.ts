@@ -75,6 +75,17 @@ export const api: DataAPI = {
   async listMachines() { await ready(); return (await db.machines.toArray()).map(publicMachine) },
   async getMachine(id) { await ready(); const machine = await db.machines.get(id); return machine && publicMachine(machine) },
   async saveMachine(machine) { await ready(); const normalized = normalizeMachineExercises(machine); const qrKey = normalized.qrUrl ? normalizeQrUrl(normalized.qrUrl) : undefined; await db.machines.put({ ...normalized, ...(qrKey ? { qrKey } : {}) }) },
+  async patchMachine(id, patch) {
+    await ready()
+    return db.transaction('rw', db.machines, async () => {
+      const current = await db.machines.get(id)
+      if (!current) throw new Error('This machine is no longer available.')
+      const next = normalizeMachineExercises({ ...current, ...patch, id })
+      const qrKey = next.qrUrl ? normalizeQrUrl(next.qrUrl) : undefined
+      await db.machines.put({ ...next, qrKey })
+      return publicMachine(next)
+    })
+  },
   async resolveQr(url) { await ready(); const key = normalizeQrUrl(url); const [machine, model] = await Promise.all([db.machines.where('qrKey').equals(key).first(), db.equipmentModels.where('qrKeys').equals(key).first()]); const result: QrResolution = {}; if (machine) result.machine = publicMachine(machine); if (model) result.model = publicModel(model); return result },
   async getEquipmentModel(id) { await ready(); const model = await db.equipmentModels.get(id); return model && publicModel(model) },
   async getMachineAiInfo(qrUrl) { await ready(); return db.machineAi.get(normalizeQrUrl(qrUrl)) },
@@ -85,9 +96,9 @@ export const api: DataAPI = {
   async saveRoutine(routine) { await ready(); await db.routines.put(routine) },
   async deleteRoutine(id) { await ready(); await db.routines.delete(id) },
   async getActiveWorkout() { await ready(); return db.workouts.filter((workout) => !workout.finishedAt).first() },
-  async startWorkout(routineId) { await ready(); const workout: Workout = { id: uid(), date: toDayKey(new Date()), routineId, startedAt: Date.now() }; await db.transaction('rw', db.workouts, db.routines, async () => { await db.workouts.add(workout); if (routineId) await db.routines.update(routineId, { lastUsedAt: workout.startedAt }) }); return workout },
+  async startWorkout(routineId) { await ready(); return db.transaction('rw', db.workouts, db.routines, async () => { const active = await db.workouts.filter((workout) => !workout.finishedAt).first(); if (active) return active; const workout: Workout = { id: uid(), date: toDayKey(new Date()), routineId, startedAt: Date.now() }; await db.workouts.add(workout); if (routineId) await db.routines.update(routineId, { lastUsedAt: workout.startedAt }); return workout }) },
   async cancelWorkout(workoutId) { await ready(); await db.transaction('rw', db.workouts, db.sets, db.activities, async () => { await db.workouts.delete(workoutId); await db.sets.where('workoutId').equals(workoutId).delete(); await db.activities.where('workoutId').equals(workoutId).delete() }) },
-  async finishWorkout(workoutId, notes) { await ready(); const workout = await db.workouts.get(workoutId); if (!workout) throw new Error('workout not found'); const finished: Workout = { ...workout, finishedAt: workout.finishedAt ?? Date.now(), ...(notes !== undefined ? { notes } : {}) }; await db.workouts.put(finished); return workoutSummary(finished) },
+  async finishWorkout(workoutId, notes) { await ready(); const workout = await db.workouts.get(workoutId); if (!workout) throw new Error('workout not found'); const finished: Workout = { ...workout, finishedAt: workout.finishedAt ?? Date.now(), ...(notes !== undefined ? { notes: notes.trim() || undefined } : {}) }; await db.workouts.put(finished); return workoutSummary(finished) },
   async listSets(workoutId) { await ready(); return (await db.sets.where('workoutId').equals(workoutId).toArray()).sort((a, b) => a.loggedAt - b.loggedAt) },
   async logSet(set) {
     await ready()
@@ -109,6 +120,38 @@ export const api: DataAPI = {
       }
     }
     return full
+  },
+  async updateSet(id, values, expected) {
+    await ready()
+    if (!Number.isFinite(values.weightLb) || values.weightLb < 0 || !Number.isInteger(values.reps) || values.reps <= 0) {
+      throw new Error('Enter a weight of 0 or more and a whole-number rep count above 0.')
+    }
+    return db.transaction('rw', db.sets, db.baselines, async () => {
+      const current = await db.sets.get(id)
+      if (!current) throw new Error('This set was removed. Reopen the workout to refresh it.')
+      if (current.recordingFormat === 'reps') values = { ...values, weightLb: 0 }
+      if (current.weightLb === values.weightLb && current.reps === values.reps) return current
+      if (expected && (current.weightLb !== expected.weightLb || current.reps !== expected.reps || current.editedAt !== expected.editedAt)) {
+        throw new Error('This set changed elsewhere. Reload the workout before editing again.')
+      }
+      const updated: WorkoutSet = {
+        ...current, weightLb: values.weightLb, reps: values.reps, editedAt: Date.now(),
+        originalValues: current.originalValues ?? { weightLb: current.weightLb, reps: current.reps },
+      }
+      const baseline = await db.baselines.get(current.exerciseId)
+      await db.sets.put(updated)
+      const suppliedBaseline = isWeightedSet(current) && baseline && baseline.at === current.loggedAt && baseline.weightLb === current.weightLb && baseline.reps === current.reps
+      if (suppliedBaseline) {
+        // A correction must not leave a strength suggestion inflated by the old numbers.
+        const candidates = (await db.sets.where('exerciseId').equals(current.exerciseId).toArray()).filter(isWeightedSet)
+        const best = candidates.sort((a, b) => epleyMaxLb(b.weightLb, b.reps) - epleyMaxLb(a.weightLb, a.reps))[0]
+        if (best) await db.baselines.put({ id: current.exerciseId, weightLb: best.weightLb, reps: best.reps, at: best.loggedAt })
+        else await db.baselines.delete(current.exerciseId)
+      } else if (isWeightedSet(updated) && baseline && epleyMaxLb(updated.weightLb, updated.reps) > epleyMaxLb(baseline.weightLb, baseline.reps)) {
+        await db.baselines.put({ id: current.exerciseId, weightLb: updated.weightLb, reps: updated.reps, at: updated.loggedAt })
+      }
+      return updated
+    })
   },
   async deleteSet(id) {
     await ready()
@@ -267,6 +310,7 @@ export const api: DataAPI = {
   async deleteTape(id) { await ready(); await db.tape.delete(id) },
   async getWeekActivity() { await ready(); const [workouts, routines, sets, activities] = await Promise.all([db.workouts.toArray(), db.routines.toArray(), db.sets.toArray(), db.activities.toArray()]); const names = new Map(routines.map((routine) => [routine.id, routine.name])); const days: WeekActivity['days'] = []; for (let offset = 6; offset >= 0; offset -= 1) { const day = new Date(); day.setDate(day.getDate() - offset); const date = toDayKey(day); const workout = workouts.find((candidate) => candidate.date === date && Boolean(candidate.finishedAt)); days.push(workout ? { date, workoutId: workout.id, routineName: workout.routineId ? names.get(workout.routineId) : undefined } : { date }) } const weeklyVolumeLb: number[] = []; const weeklyCardioMinutes: number[] = []; for (let week = 5; week >= 0; week -= 1) { const end = Date.now() - week * 7 * 86400_000; const start = end - 7 * 86400_000; weeklyVolumeLb.push(sets.filter((set) => set.loggedAt > start && set.loggedAt <= end).reduce((total, set) => total + setVolume(set), 0)); weeklyCardioMinutes.push(activities.filter(isActivityLog).filter((a) => activityIsCardio(a) && a.loggedAt > start && a.loggedAt <= end).reduce((t, a) => t + a.durationSec / 60, 0)) } return { days, weeklyVolumeLb, weeklyCardioMinutes } },
   async getSettings() { await ready(); const settings = await db.settings.get('settings'); if (!settings) throw new Error('settings not found'); const { id: _id, ...publicSettings } = settings; return publicSettings },
+  async patchSettings(patch) { await ready(); await db.transaction('rw', db.settings, async () => { const current = await db.settings.get('settings'); if (!current) throw new Error('Settings could not be loaded. Please reload.'); await db.settings.put({ ...current, ...patch, id: 'settings' }) }) },
   async saveSettings(settings) { await ready(); await db.settings.put({ id: 'settings', ...settings }) },
 }
 

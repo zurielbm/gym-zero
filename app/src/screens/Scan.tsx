@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAction } from '../components/Feedback'
 import { useApp } from '../AppContext'
 import { createScanDetector } from '../lib/barcode'
 import { isFoodBarcode, lookupBarcode } from '../lib/food-sources'
@@ -16,6 +17,9 @@ const sameTarget = (a: Found | null, value: string) =>
 /** Camera scanner for machine QR codes and food barcodes, with manual entry. */
 export function ScanScreen() {
   const { api, go, activeWorkout, settings } = useApp()
+  const action = useAction()
+  const [cameraState, setCameraState] = useState<'starting' | 'ready' | 'denied' | 'unavailable'>('starting')
+  const [cameraAttempt, setCameraAttempt] = useState(0)
   const foodDbEndpoint = settings.foodDbEndpoint
   const videoRef = useRef<HTMLVideoElement>(null)
   const [cameraOn, setCameraOn] = useState(false)
@@ -53,6 +57,7 @@ export function ScanScreen() {
     let stopped = false
 
     const start = async () => {
+      setCameraState('starting')
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
@@ -60,7 +65,9 @@ export function ScanScreen() {
         if (stopped || !videoRef.current) { stream?.getTracks().forEach((t) => t.stop()); return }
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+        if (stopped) return
         setCameraOn(true)
+        setCameraState('ready')
 
         const detector = createScanDetector()
         let lastScan = 0
@@ -79,8 +86,11 @@ export function ScanScreen() {
           raf = requestAnimationFrame(loop)
         }
         raf = requestAnimationFrame(loop)
-      } catch {
-        setCameraOn(false) // no camera / denied: manual entry still works
+      } catch (error) {
+        stream?.getTracks().forEach((track) => track.stop())
+        if (stopped) return
+        setCameraOn(false)
+        setCameraState(error instanceof DOMException && error.name === 'NotAllowedError' ? 'denied' : 'unavailable')
       }
     }
     start()
@@ -89,7 +99,7 @@ export function ScanScreen() {
       cancelAnimationFrame(raf)
       stream?.getTracks().forEach((t) => t.stop())
     }
-  }, [handleCode])
+  }, [handleCode, cameraAttempt])
 
   const open = (f: Found) => {
     if (f.kind === 'food') {
@@ -140,7 +150,7 @@ export function ScanScreen() {
       : f.state === 'done' ? 'Tap to add it by hand instead'
       : `Barcode ${f.code}`
     return (
-      <div className="qr-found" onClick={() => open(f)}>
+      <button className="qr-found" disabled={f.state === 'loading'} onClick={() => open(f)}>
         <div className="qr-badge">{badge}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <b style={{ fontSize: '0.85rem' }}>{title}</b>
@@ -149,7 +159,7 @@ export function ScanScreen() {
           </span>
         </div>
         {f.state !== 'loading' && <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>}
-      </div>
+      </button>
     )
   }
 
@@ -161,18 +171,17 @@ export function ScanScreen() {
       >
         ‹ Back
       </button>
-      <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>Scan<span className="dot">.</span></h1>
-      <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>
-        Scan a code or identify an exercise from a photo
-      </p>
+      <h1 className="p-h1">Scan<span className="dot">.</span></h1>
+      <p className="p-sub">Machine QR, food barcode, or identify an exercise from a photo</p>
 
       <div className="viewfinder">
         <video ref={videoRef} muted playsInline style={{ display: cameraOn ? 'block' : 'none' }} />
         <div className="corner tl" /><div className="corner tr" />
         <div className="corner bl" /><div className="corner br" />
-        <div className="scanline" />
+        {cameraOn && <div className="scanline" />}
+        {!cameraOn && <div className="camera-status" role="status">{cameraState === 'starting' ? <><i className="spinner" /> Starting camera…</> : cameraState === 'denied' ? 'Camera access is blocked' : 'Camera unavailable'}</div>}
         {found && (found.kind === 'food' ? foodCard(found) : (
-          <div className="qr-found" onClick={() => open(found)}>
+          <button className="qr-found" onClick={() => open(found)}>
             <div className="qr-badge">✓</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <b style={{ fontSize: '0.85rem' }}>
@@ -190,26 +199,27 @@ export function ScanScreen() {
               </span>
             </div>
             <span style={{ color: 'var(--on-lime)', fontWeight: 900 }}>→</span>
-          </div>
+          </button>
         ))}
       </div>
 
       {!cameraOn && (
         <p className="small" style={{ marginTop: 0 }}>
-          Camera unavailable — type the QR link or barcode digits instead.
+          {cameraState === 'starting' ? 'Allow camera access when your browser asks. You can also enter a code below.' : cameraState === 'denied' ? 'Allow camera access in your browser’s site settings, then retry. Or enter the code below.' : 'Use a device with a camera and an HTTPS connection, or enter the code below.'}
         </p>
       )}
+      {cameraState !== 'starting' && !cameraOn && <button className="ghost-btn" onClick={() => setCameraAttempt((n) => n + 1)}>Retry camera</button>}
       <ExercisePhoto capturePhoto={cameraOn ? capturePhoto : undefined} />
       <div className="field">
-        <label>Or enter a QR link / barcode digits</label>
+        <label htmlFor="scan-code">Or enter a QR link / barcode digits</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
-            className="text-in" placeholder="https://… or 0123456789012"
+            id="scan-code" className="text-in" autoCapitalize="off" autoCorrect="off" enterKeyHint="go" placeholder="https://… or 0123456789012"
             value={manual} onChange={(e) => setManual(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && resolveManual()}
+            onKeyDown={(e) => { if (e.key === 'Enter') void action.run(resolveManual) }}
           />
-          <button className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }} onClick={resolveManual}>
-            Go
+          <button className="ghost-btn" style={{ width: 'auto', padding: '0 16px' }} disabled={!manual.trim() || action.busy} onClick={() => void action.run(resolveManual)}>
+            {action.busy ? 'Looking…' : 'Go'}
           </button>
         </div>
       </div>

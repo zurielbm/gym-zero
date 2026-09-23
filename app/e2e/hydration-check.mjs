@@ -10,16 +10,17 @@ const exe = `${cache}/${shellDir}/chrome-headless-shell-mac-arm64/chrome-headles
 const browser = await chromium.launch({ executablePath: exe })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const errors = []
+let failedSteps = 0
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`) })
 
 const step = async (name, fn) => {
   try { await fn(); console.log(`PASS ${name}`) }
-  catch (e) { console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await page.screenshot({ path: `e2e/fail-${name.replace(/\W+/g, '-')}.png` }) }
+  catch (e) { failedSteps++; console.log(`FAIL ${name}: ${String(e).split('\n')[0]}`); await page.screenshot({ path: `e2e/fail-${name.replace(/\W+/g, '-')}.png` }) }
 }
 const chip = (text) => page.getByRole('button', { name: text, exact: true })
 
-await page.goto('http://localhost:5199/')
+await page.goto(process.env.BASE_URL ?? 'http://localhost:5199/')
 await page.getByText('Start Workout').waitFor({ timeout: 8000 })
 
 await step('home shows water bar with auto 64 oz target', async () => {
@@ -94,6 +95,7 @@ await step('persistence: reload keeps drinks + containers', async () => {
   await page.locator('.meal-row', { hasText: '🚰 Bottle · 24 oz' }).waitFor()
 })
 
-await page.screenshot({ path: 'e2e/hydration-fuel.png', fullPage: false })
+await page.screenshot({ path: 'e2e/final-hydration-fuel.png', fullPage: false })
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'NO PAGE ERRORS')
 await browser.close()
+if (failedSteps || errors.length) process.exitCode = 1

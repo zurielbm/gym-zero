@@ -6,7 +6,7 @@ export function VideoPlayer({ url }: { url: string | undefined }) {
   const [playing, setPlaying] = useState(false)
   const vid = youTubeId(url)
 
-  if (!url) return null
+  if (!url || !/^https?:\/\//i.test(url)) return null
 
   if (!vid) {
     return (
@@ -29,11 +29,11 @@ export function VideoPlayer({ url }: { url: string | undefined }) {
           />
         </div>
       ) : (
-        <div className="video-thumb" style={{ margin: 0, cursor: 'pointer' }} onClick={() => setPlaying(true)}>
+        <button className="video-thumb video-button" aria-label="Play instruction video" style={{ margin: 0, cursor: 'pointer' }} onClick={() => setPlaying(true)}>
           <img src={youTubeThumb(vid)} alt="Instruction video" />
           <div className="play-badge" />
           <div className="video-meta">▶ Official instruction video</div>
-        </div>
+        </button>
       )}
       <a
         className="small" style={{ display: 'inline-block', marginTop: 6, textDecoration: 'none' }}

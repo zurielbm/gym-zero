@@ -75,3 +75,6 @@
 @media (prefers-reduced-motion: reduce) {
   .machines-notice { animation: none; }
 }
+
+.machine-settings { display: grid; gap: 14px; }
+.ms-fav { border-radius: var(--r-sm); }
