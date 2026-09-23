@@ -13,6 +13,10 @@ export type Screen =
   | { name: 'body' }
   | { name: 'summary'; workoutId: string }
   | { name: 'settings' }
+  /** notice: one-line confirmation shown after a save */
+  | { name: 'machines'; notice?: string }
+  /** no machineId → add a machine without scanning */
+  | { name: 'machine-settings'; machineId?: string; from?: 'machines' | 'machine' }
 
 export interface AppCtx {
   api: DataAPI

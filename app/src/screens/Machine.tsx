@@ -1,46 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../AppContext'
+import { MachineExercisePicker as ExercisePicker } from '../components/MachineExercisePicker'
 import { Seg } from '../components/Seg'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { aiConfig, fetchMachineInfo, recommendProgram, useAiAvailable } from '../lib/ai'
-import type { AiProgram, EquipmentModel, Exercise, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
+import type { AiProgram, EquipmentModel, ExperienceLevel, GymMachine, MachineAiInfo, PrevPerformance, Settings, StrengthBaseline, TrainingGoal } from '../types'
 import { isTimedExercise, recordingFormat, epleyMaxLb, machineExerciseIds, machineSupportsExercise, normalizeMachineExercises } from '../types'
-
-interface ExercisePickerProps {
-  value: string[]
-  exercises: Map<string, Exercise>
-  onChange: (ids: string[]) => void
-}
-
-function ExercisePicker({ value, exercises, onChange }: ExercisePickerProps) {
-  const available = [...exercises.values()].filter((exercise) => !value.includes(exercise.id))
-  return (
-    <div className="machine-exercise-editor">
-      {value.map((id) => (
-        <div className="machine-exercise-edit-row" key={id}>
-          <span>
-            <b>{exercises.get(id)?.name ?? id}</b>
-            <small>{exercises.get(id)?.muscleGroups.join(' · ')}</small>
-          </span>
-          <button className="icon-btn" title={`Remove ${exercises.get(id)?.name ?? 'exercise'}`} onClick={() => onChange(value.filter((other) => other !== id))}>×</button>
-        </div>
-      ))}
-      {available.length > 0 && (
-        <select
-          className="text-in"
-          value=""
-          aria-label="Add another exercise"
-          onChange={(event) => {
-            if (event.target.value) onChange([...value, event.target.value])
-          }}
-        >
-          <option value="">＋ Add another exercise…</option>
-          {available.map((exercise) => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}
-        </select>
-      )}
-    </div>
-  )
-}
 
 interface Props {
   machineId?: string
@@ -348,13 +313,25 @@ export function MachineScreen({ machineId, initialExerciseId, modelId, qrUrl }: 
         >
           ‹ {initialExerciseId && activeWorkout ? 'Workout' : 'Scanner'}
         </button>
-        <button
-          className={`icon-btn${machine.favorite ? ' fav' : ''}`}
-          title="Favorite"
-          onClick={() => patch({ favorite: !machine.favorite })}
-        >
-          {machine.favorite ? '★' : '☆'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            className="back-link"
+            style={{ margin: 0, padding: '0 8px' }}
+            disabled={progBusy}
+            onClick={() => go({ name: 'machine-settings', machineId: machine.id, from: 'machine' })}
+          >
+            Machine settings
+          </button>
+          <button
+            className={`icon-btn${machine.favorite ? ' fav' : ''}`}
+            title="Favorite"
+            aria-label={machine.favorite ? 'Remove from favorites' : 'Add to favorites'}
+            aria-pressed={machine.favorite}
+            onClick={() => patch({ favorite: !machine.favorite })}
+          >
+            {machine.favorite ? '★' : '☆'}
+          </button>
+        </div>
       </div>
       <h1 className="p-h1" style={{ fontSize: '1.6rem' }}>{machine.nickname}</h1>
       <p className="p-sub" style={{ textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.1em', fontWeight: 700 }}>

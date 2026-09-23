@@ -3,6 +3,7 @@ import type { Screen } from '../AppContext'
 import { BarbellIcon, ChartIcon, FoodIcon, GearIcon, HomeIcon, ScanIcon } from './icons'
 
 const workoutScreens = new Set(['routines', 'routine-edit', 'workout', 'machine', 'summary'])
+const settingsScreens = new Set(['settings', 'machines', 'machine-settings'])
 
 const tabs: Array<{ key: string; label: string; icon: () => React.ReactElement; to: Screen }> = [
   { key: 'home', label: 'Home', icon: HomeIcon, to: { name: 'home' } },
@@ -60,7 +61,7 @@ export function TopNav() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         <button
-          className={`icon-btn${screen.name === 'settings' ? ' fav' : ''}`}
+          className={`icon-btn${settingsScreens.has(screen.name) ? ' fav' : ''}`}
           style={{ padding: 0, display: 'inline-flex' }}
           title="Settings"
           onClick={() => go({ name: 'settings' })}

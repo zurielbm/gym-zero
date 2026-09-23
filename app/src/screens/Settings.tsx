@@ -484,6 +484,40 @@ function MyStrengthCard() {
   )
 }
 
+/** Entry to the machine library — edit a machine without scanning its QR. */
+function MyMachinesCard() {
+  const { api, go } = useApp()
+  const [counts, setCounts] = useState<{ total: number; favorites: number } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    api.listMachines()
+      .then((list) => { if (alive) setCounts({ total: list.length, favorites: list.filter((m) => m.favorite).length }) })
+      .catch(() => { /* the library screen shows the error */ })
+    return () => { alive = false }
+  }, [api])
+
+  return (
+    <button
+      className="card tappable"
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', color: 'var(--ink)', marginBottom: 14 }}
+      onClick={() => go({ name: 'machines' })}
+    >
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="lab" style={{ display: 'block' }}>My machines</span>
+        <span className="small" style={{ display: 'block', marginTop: 4 }}>
+          {counts == null
+            ? 'Names, seat settings and exercises — no scan needed.'
+            : counts.total === 0
+              ? 'None yet — add one by hand or scan a QR at the gym.'
+              : `${counts.total} saved · ${counts.favorites} favorite — edit without scanning.`}
+        </span>
+      </span>
+      <span className="chev" aria-hidden="true">›</span>
+    </button>
+  )
+}
+
 function DataCard() {
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -552,6 +586,7 @@ export function SettingsScreen() {
   return (
     <div className="page">
       <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Settings<span className="dot">.</span></h1>
+      <MyMachinesCard />
       <AccountCard />
       <TargetsCard />
       <AiCard />
