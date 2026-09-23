@@ -1,0 +1,59 @@
+/* Post-workout overview. Builds on .tile/.card and the shared .muscle-region colours. */
+.summary-page h2.lab { display: block; margin: 0 0 6px; }
+
+.wo-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.wo-stat { grid-column: span 2; min-height: 0; min-width: 0; gap: 10px; }
+.wo-stat.wide { grid-column: span 3; }
+.wo-stat .num { font-size: 1.7rem; white-space: nowrap; }
+.wo-stat.wide .num { font-size: 2.2rem; }
+.wo-stat .small { font-size: 0.66rem; line-height: 1.3; }
+
+.wo-empty b { display: block; font-size: 0.92rem; }
+.wo-empty .small { margin: 6px 0 0; }
+.wo-prs > .small { margin: 0; }
+
+.wo-mini-stats { display: flex; gap: 22px; margin: 4px 0 6px; }
+.wo-mini-stats > div { display: flex; flex-direction: column; gap: 4px; }
+.wo-mini-stats .num { font-size: 1.5rem; }
+
+.wo-card-title { font-size: 1.05rem; font-weight: 700; margin: 4px 0 0; }
+.wo-figures { margin: 14px auto 14px; }
+.wo-regions { border-top: 1px solid var(--hairline); padding: 12px 0 4px; }
+.wo-regions-title { display: flex; align-items: center; font-size: 0.66rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.14em; margin: 0 0 8px; }
+.wo-regions-title i, .wo-ex-muscles i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; flex-shrink: 0; }
+.wo-regions-title i.primary, .wo-ex-muscles i.primary { background: var(--lime); }
+.wo-regions-title i.secondary, .wo-ex-muscles i.secondary { background: #70b5c3; }
+.wo-regions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wo-regions li { display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; align-items: baseline; }
+.wo-regions li b { font-size: 0.86rem; }
+.wo-region-count { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wo-region-names { grid-column: 1 / -1; font-size: 0.74rem; color: var(--faint); line-height: 1.4; }
+.wo-unmapped { font-size: 0.74rem; color: var(--muted); line-height: 1.5; margin: 10px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); }
+
+.wo-breakdown ol { list-style: none; margin: 0; padding: 0; }
+.wo-breakdown li { padding: 12px 0; border-top: 1px solid var(--hairline); }
+.wo-breakdown li:first-child { border-top: 0; padding-top: 4px; }
+.wo-breakdown li:last-child { padding-bottom: 0; }
+.wo-ex-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wo-ex-head b { font-size: 0.9rem; min-width: 0; }
+.wo-ex-head .pr-flag { flex-shrink: 0; }
+.wo-breakdown li > .small { margin: 3px 0 0; font-variant-numeric: tabular-nums; }
+.wo-ex-muscles { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 0.72rem; color: var(--muted); }
+.wo-ex-muscles span { display: inline-flex; align-items: center; }
+
+/* Narrow phones: sets & reps share a row, volume gets its own so large numbers never clip. */
+@media (max-width: 400px) {
+  .wo-stats { gap: 8px; }
+  .wo-stat { grid-column: span 3; }
+  .wo-stat.volume { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; }
+  .wo-stat.volume .small { flex-basis: 100%; }
+  .wo-stat.wide .num { font-size: 1.9rem; }
+}
+
+@media (min-width: 900px) {
+  .wo-muscles { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  .wo-muscles > :not(.wo-figures):not(.wo-region-lists) { grid-column: 1 / -1; }
+  .wo-muscles > .wo-figures { margin: 14px 0 0; }
+  .wo-region-lists { margin-top: 14px; }
+  .wo-region-lists > .wo-regions:first-child { border-top: 0; padding-top: 0; }
+}

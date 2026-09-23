@@ -21,7 +21,8 @@
     "e2e:rest-edits": "node e2e/rest-edits.mjs",
     "test:exercise-photo": "node e2e/exercise-photo-ai.mjs",
     "test:exercise-data": "node e2e/exercise-data.mjs",
-    "test:exercise-review": "node e2e/exercise-review.mjs"
+    "test:exercise-review": "node e2e/exercise-review.mjs",
+    "e2e:workout-overview": "node e2e/workout-overview.mjs"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.12.5",

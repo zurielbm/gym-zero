@@ -33,27 +33,37 @@ const back: Shape[] = [
 ]
 const outline = 'M68 44 L68 51 L50 57 Q35 57 29 72 L22 109 L20 127 L13 164 L10 179 Q10 186 15 185 L19 175 L21 182 L25 176 L27 160 L40 131 L44 110 L48 95 L52 122 L54 141 L48 159 Q43 180 45 199 L48 235 L47 249 L48 271 L53 302 L49 313 Q44 320 51 321 L65 320 L69 309 L69 279 L72 258 L70 243 L77 211 L80 190 L83 211 L90 243 L88 258 L91 279 L91 309 L95 320 L109 321 Q116 320 111 313 L107 302 L112 271 L113 249 L112 235 L115 199 Q117 180 112 159 L106 141 L108 122 L112 95 L116 110 L120 131 L133 160 L135 176 L139 182 L141 175 L145 185 Q150 186 150 179 L147 164 L140 127 L138 109 L131 72 Q125 57 110 57 L92 51 L92 44Z'
 
-export function MuscleMap({ exercise }: { exercise: Exercise }) {
+export type MuscleLevel = 'primary' | 'secondary' | 'inactive'
+export type BodyView = 'front' | 'back'
+/** Regions drawn in each view; a mirrored shape is one region, not two. */
+export const viewRegions: Record<BodyView, MuscleRegion[]> = { front: front.map(shape => shape.region), back: back.map(shape => shape.region) }
+
+/** Front and back schematic figures, coloured by a caller-supplied level per region. */
+export function BodyFigures({ level, describe, className = 'muscle-figures' }: { level: (region: MuscleRegion) => MuscleLevel; describe: (view: BodyView) => string; className?: string }) {
   const id = useId()
+  return <div className={className}>
+    {(['front', 'back'] as const).map(view => <figure key={view}>
+      <svg viewBox="0 0 160 330" role="img" aria-labelledby={`${id}-${view}`}>
+        <title id={`${id}-${view}`}>{describe(view)}</title>
+        <ellipse className="anatomy-outline" cx="80" cy="26" rx="15" ry="20" />
+        <path className="anatomy-outline" d={outline} />
+        {(view === 'front' ? front : back).map(shape => <g key={shape.region} className={`muscle-region ${level(shape.region)}`} data-region={shape.region} data-level={level(shape.region)}>
+          <path d={shape.d} />{shape.mirrored && <path d={shape.d} transform="translate(160 0) scale(-1 1)" />}
+        </g>)}
+        <path className="anatomy-detail" d={view === 'front' ? 'M80 66V151 M55 246L65 247 M95 247L105 246 M57 260L61 300 M103 260L99 300' : 'M80 57V183 M54 246L66 247 M94 247L106 246 M62 294L62 304 M98 294L98 304'} />
+      </svg>
+      <figcaption>{view === 'front' ? 'Front' : 'Back'}</figcaption>
+    </figure>)}
+  </div>
+}
+
+export function MuscleMap({ exercise }: { exercise: Exercise }) {
   const profile = exerciseMuscles(exercise)
   const names = (regions: MuscleRegion[]) => regions.map(region => muscleLabels[region]).join(' · ')
-  const level = (region: MuscleRegion) => profile.primary.includes(region) ? 'primary' : profile.secondary.includes(region) ? 'secondary' : 'inactive'
+  const level = (region: MuscleRegion): MuscleLevel => profile.primary.includes(region) ? 'primary' : profile.secondary.includes(region) ? 'secondary' : 'inactive'
   return <section className="muscle-map" aria-label={`Muscles for ${exercise.name}`} data-exercise={exercise.id}>
     <div className="muscle-map-heading"><span className="lab lm">Muscles targeted</span><b>{exercise.name}</b></div>
-    <div className="muscle-figures">
-      {(['front', 'back'] as const).map(view => <figure key={view}>
-        <svg viewBox="0 0 160 330" role="img" aria-labelledby={`${id}-${view}`}>
-          <title id={`${id}-${view}`}>{exercise.name}, {view} view. {profile.general ? 'Target groups' : 'Main muscles'}: {names(profile.primary)}.{profile.secondary.length ? ` Assisting: ${names(profile.secondary)}.` : ''}</title>
-          <ellipse className="anatomy-outline" cx="80" cy="26" rx="15" ry="20" />
-          <path className="anatomy-outline" d={outline} />
-          {(view === 'front' ? front : back).map(shape => <g key={shape.region} className={`muscle-region ${level(shape.region)}`} data-region={shape.region} data-level={level(shape.region)}>
-            <path d={shape.d} />{shape.mirrored && <path d={shape.d} transform="translate(160 0) scale(-1 1)" />}
-          </g>)}
-          <path className="anatomy-detail" d={view === 'front' ? 'M80 66V151 M55 246L65 247 M95 247L105 246 M57 260L61 300 M103 260L99 300' : 'M80 57V183 M54 246L66 247 M94 247L106 246 M62 294L62 304 M98 294L98 304'} />
-        </svg>
-        <figcaption>{view === 'front' ? 'Front' : 'Back'}</figcaption>
-      </figure>)}
-    </div>
+    <BodyFigures level={level} describe={view => `${exercise.name}, ${view} view. ${profile.general ? 'Target groups' : 'Main muscles'}: ${names(profile.primary)}.${profile.secondary.length ? ` Assisting: ${names(profile.secondary)}.` : ''}`} />
     <dl className="muscle-legend">
       <div><dt><i className="primary" />{profile.general ? 'Target groups' : 'Main'}</dt><dd>{names(profile.primary) || 'No muscle groups saved'}</dd></div>
       {profile.secondary.length > 0 && <div><dt><i className="secondary" />Assisting</dt><dd>{names(profile.secondary)}</dd></div>}
