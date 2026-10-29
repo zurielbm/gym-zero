@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan(gy): Private account invitations</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0c0d'/%3E%3Cpath d='M22 13h14l10 10v27a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z' fill='%23fff'/%3E%3Cpath d='M36 13v10h10' fill='none' stroke='%230c0c0d' stroke-width='2.5' stroke-linejoin='round'/%3E%3Cpath d='M26 32h14M26 38h14M26 44h9' stroke='%230c0c0d' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0c0c0d; --surface: #141416; --surface-2: #1c1c1f; --hairline: #26262b;
+    --ink: #f4f4f2; --muted: #a6a69e; --faint: #6f6f68;
+    --lime: #d8f34f; --on-lime: #101204; --lime-dim: rgba(216, 243, 79, 0.12); --danger: #ff5a3d;
+    --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font-family: var(--body); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; line-height: 1.1; }
+  h1 .dot, .p-h1 .dot { color: var(--lime); }
+  h2 { font-size: 1.3rem; font-weight: 800; margin-bottom: 14px; }
+  p { margin: 0; }
+  .eyebrow, .lab { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 800; }
+  .eyebrow { color: var(--lime); display: block; margin-bottom: 10px; }
+  .lede { color: var(--muted); font-size: 1.02rem; max-width: 62ch; margin-top: 12px; }
+  section { margin-top: 56px; }
+
+  /* mockups */
+  .mock-note { display: inline-flex; gap: 8px; align-items: center; font-size: 0.8rem; color: var(--muted);
+    border: 1px dashed var(--hairline); border-radius: 999px; padding: 6px 12px; margin-bottom: 18px; }
+  .mock-note b { color: var(--lime); }
+  .mocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; align-items: start; }
+  .phone { background: var(--bg); border: 1px solid var(--hairline); border-radius: 34px; padding: 18px 14px 22px;
+    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8); max-width: 380px; width: 100%; justify-self: center; }
+  .phone-cap { text-align: center; margin-top: 12px; font-size: 0.8rem; color: var(--faint); }
+  .status-bar { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); padding: 0 8px 14px; font-weight: 700; }
+  .p-h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+  .small { font-size: 0.8rem; color: var(--muted); }
+  .lm { color: var(--lime); }
+  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 14px; }
+  .card + .card { margin-top: 12px; }
+  .card .small + .small { margin-top: 6px; }
+  .big-btn { display: flex; align-items: center; justify-content: center; width: 100%; background: var(--lime); color: var(--on-lime);
+    font-weight: 700; font-size: 0.95rem; min-height: 48px; border-radius: 999px; border: 0; font-family: inherit; }
+  .ghost-btn { display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--ink);
+    font-weight: 700; font-size: 0.86rem; padding: 0 16px; border-radius: 999px; border: 1px solid var(--hairline); min-height: 44px; font-family: inherit; }
+  .ghost-btn.danger { color: var(--danger); border-color: #4d2a22; background: transparent; }
+  .text-in { width: 100%; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 10px; color: var(--ink);
+    font-family: var(--body); font-size: 1rem; padding: 10px 12px; min-height: 44px; display: flex; align-items: center; }
+  .text-in.ph { color: var(--faint); }
+  .text-in.mono { font-family: var(--mono); font-size: 0.9rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; line-height: 24px; }
+  .text-in.focus { border-color: var(--lime); }
+  .inv-new { margin-top: 12px; padding: 12px; display: grid; gap: 8px; background: var(--lime-dim);
+    border: 1px solid rgba(216, 243, 79, 0.28); border-radius: 10px; }
+  .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row-btns .ghost-btn { flex: 1 1 110px; }
+  .inv-list { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+  .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); margin-top: 8px; }
+  .inv-row > div { flex: 1 1 150px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .inv-row b { font-size: 0.86rem; }
+  .badge { margin-left: 6px; }
+  .field { margin-top: 14px; }
+  .field .lab { display: block; margin-bottom: 5px; }
+
+  /* steps + behavior */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; counter-reset: s; }
+  .steps li { background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 16px; counter-increment: s; }
+  .steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 999px;
+    background: var(--lime); color: var(--on-lime); font-weight: 800; font-size: 0.85rem; margin-bottom: 10px; }
+  .steps h3 { font-size: 1rem; margin-bottom: 4px; }
+  .steps p, .rules p, .qa p { color: var(--muted); font-size: 0.92rem; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .rule { border-left: 3px solid var(--lime); background: var(--surface); border-radius: 0 12px 12px 0; padding: 12px 14px; }
+  .rule h3 { font-size: 0.95rem; margin-bottom: 4px; }
+  .qa details { background: var(--surface); border: 1px solid var(--hairline); border-radius: 14px; padding: 0 16px; }
+  .qa details + details { margin-top: 10px; }
+  .qa summary { cursor: pointer; font-weight: 700; padding: 14px 0; list-style-position: outside; }
+  .qa details[open] summary { color: var(--lime); }
+  .qa details p { padding-bottom: 14px; }
+  footer { margin-top: 56px; color: var(--faint); font-size: 0.8rem; border-top: 1px solid var(--hairline); padding-top: 16px; }
+  code { font-family: var(--mono); font-size: 0.85em; color: var(--ink); background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <span class="eyebrow">Gym Zero · Plan</span>
+    <h1>Private account invitations<span class="dot">.</span></h1>
+    <p class="lede">Anyone signed in can send a link that lets someone create their <strong>own private account</strong>. Links work for 7 days, can be used more than once, and can be revoked at any time. The shared family code keeps working.</p>
+  </header>
+
+  <section aria-labelledby="mock-h">
+    <h2 id="mock-h">What it looks like</h2>
+    <p class="mock-note"><b>Mockup</b> Illustrative only. Names, dates and the link below are placeholders, not real tokens.</p>
+    <div class="mocks">
+      <figure style="margin:0">
+        <div class="phone" role="img" aria-label="Mockup of the Settings screen with the Invite someone card">
+          <div class="status-bar"><span>9:41</span><span>Settings</span></div>
+          <div class="card">
+            <span class="lab">Account — Synced</span>
+            <p class="small" style="margin-top:4px">Alex · alex@example.com</p>
+          </div>
+          <div class="card">
+            <span class="lab">Invite someone</span>
+            <p class="small" style="margin-top:6px">They get their own private account. Your training, food and settings stay yours, and theirs stay theirs.</p>
+            <p class="small">Anyone with the link can create an account until you revoke it or it expires after 7 days. One link can be used more than once.</p>
+            <div class="big-btn" style="margin-top:12px">Create another link</div>
+            <div class="inv-new">
+              <span class="lab">New invite link</span>
+              <div class="text-in mono focus">https://gym.example.com/#invite=EXAMPLE-ONLY</div>
+              <p class="small">Expires Oct 8, 4:12 PM. This is the only time the full link is shown, so copy or share it now.</p>
+              <div class="row-btns"><span class="ghost-btn">Copy link</span><span class="ghost-btn">Share…</span></div>
+              <p class="small lm">Copied to clipboard.</p>
+            </div>
+            <div class="inv-list">
+              <span class="lab">Recent invitations</span>
+              <div class="inv-row">
+                <div><b>Created Oct 1, 4:12 PM<span class="lab lm badge">New</span></b><span class="small lm">Active · expires Oct 8, 4:12 PM</span></div>
+                <span class="ghost-btn danger">Revoke</span>
+              </div>
+              <div class="inv-row">
+                <div><b>Created Sep 28, 9:03 AM</b><span class="small">Revoked Sep 29, 7:40 PM</span></div>
+              </div>
+              <div class="inv-row">
+                <div><b>Created Sep 15, 6:20 PM</b><span class="small">Expired Sep 22, 6:20 PM</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption class="phone-cap">Sender · Settings, right after tapping Create</figcaption>
+      </figure>
+
+      <figure style="margin:0">
+        <div class="phone" role="img" aria-label="Mockup of the signup screen a recipient sees after opening an invite link">
+          <div class="status-bar"><span>9:41</span><span>gym.example.com</span></div>
+          <div style="padding:22px 6px 6px">
+            <h3 class="p-h1">You’re invited<span class="dot">.</span></h3>
+            <p class="small" style="margin:6px 0 10px">Create your own private Gym Zero account. Your workouts, food and progress are yours alone. The person who invited you can’t see them.</p>
+            <div class="field"><span class="lab">Name</span><div class="text-in ph">Your name</div></div>
+            <div class="field"><span class="lab">Email</span><div class="text-in ph">you@example.com</div></div>
+            <div class="field"><span class="lab">Password</span><div class="text-in ph">••••••••</div><p class="small" style="margin-top:5px">At least 8 characters.</p></div>
+            <div class="big-btn" style="margin-top:22px">Create account</div>
+            <div class="ghost-btn" style="margin-top:10px">Use an invite code instead</div>
+            <div class="ghost-btn" style="margin-top:10px">Have an account? Sign in</div>
+          </div>
+        </div>
+        <figcaption class="phone-cap">Recipient · opens the link, no code field shown</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="flow-h">
+    <h2 id="flow-h">How it works</h2>
+    <ol class="steps">
+      <li><h3>Create a link</h3><p>In Settings, tap <em>Create invite link</em>. The full link is shown once, ready to copy or share from the phone’s share sheet.</p></li>
+      <li><h3>They sign up</h3><p>The link opens straight into signup. No family code needed. The server checks the link only when the account is created.</p></li>
+      <li><h3>Stay in control</h3><p>Recent links show when they were made and when they expire. Tap <em>Revoke</em> to stop one immediately.</p></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <h2 id="rules-h">Behavior</h2>
+    <div class="rules">
+      <div class="rule"><h3>Private accounts</h3><p>Every invited person gets their own account and their own data. Nothing is shared with whoever invited them.</p></div>
+      <div class="rule"><h3>Reusable for 7 days</h3><p>One link can sign up more than one person until it expires 7 days after creation. It is not single-use.</p></div>
+      <div class="rule"><h3>Revocable anytime</h3><p>Revoking stops new signups right away. Accounts already created with the link keep working.</p></div>
+      <div class="rule"><h3>Shown once</h3><p>The server stores only a fingerprint of the link, never the link itself, and the app doesn’t save it either. Lost it? Revoke it and create a new one.</p></div>
+      <div class="rule"><h3>Anyone signed in</h3><p>Any member can invite. Limits: 10 active links and 20 new links per day per person.</p></div>
+      <div class="rule"><h3>Family code still works</h3><p><em>Create account</em> with the shared code works exactly as before. An invited person can switch with <em>Use an invite code instead</em>.</p></div>
+    </div>
+  </section>
+
+  <section class="qa" aria-labelledby="qa-h">
+    <h2 id="qa-h">Questions &amp; answers</h2>
+    <details open>
+      <summary>Why private accounts instead of joining the inviter’s account?</summary>
+      <p>Training, food and body data are personal. A separate account means nobody sees anyone else’s numbers by accident, each person gets coaching that fits their own goals, and removing someone never touches anyone else’s history. It matches how the family code already works: everyone signs in as themselves.</p>
+    </details>
+    <details open>
+      <summary>Why do links expire after 7 days?</summary>
+      <p>Links get forwarded, pasted into chats and left in message history. A week is long enough for someone to get around to signing up, and short enough that an old link turning up later doesn’t open the door.</p>
+    </details>
+    <details open>
+      <summary>Why make links revocable and reusable?</summary>
+      <p>Reusable means you can send one link to a group, or resend it if the first try fails, without making a new one each time. The trade-off is that anyone holding it can sign up, so revoke is there to close it the moment it’s no longer needed or ends up somewhere it shouldn’t.</p>
+    </details>
+    <details open>
+      <summary>Is anything left to decide?</summary>
+      <p>No. Who can invite (anyone signed in), how long links last (7 days), whether they’re reusable (yes) and the family code (kept) are all settled.</p>
+    </details>
+  </section>
+
+  <footer>Plan(gy) · Private account invitations · Mockups are illustrative; the link shown is a placeholder.</footer>
+</main>
+</body>
+</html>

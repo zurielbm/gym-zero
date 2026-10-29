@@ -252,7 +252,16 @@ export interface Settings {
   /** entered once; lets quick weigh-ins auto-compute BMI */
   heightIn?: number
   bodyFatGoalPct?: number
-  /** CLIProxyAPI base URL (tailnet HTTPS); AI features are off when unset */
+  /**
+   * Where AI runs: the household's server key (metered) or this person's own key.
+   * Unset means "household", unless an endpoint was saved before the choice existed.
+   */
+  aiSource?: 'household' | 'own'
+  /** own-key provider; custom is any OpenAI-compatible endpoint such as CLIProxyAPI */
+  aiProvider?: 'anthropic' | 'openai' | 'custom'
+  /** own key unreachable → use household AI instead (default on) */
+  aiFallback?: boolean
+  /** custom provider base URL (e.g. CLIProxyAPI over tailnet HTTPS) */
   aiEndpoint?: string
   aiApiKey?: string
   aiModel?: string

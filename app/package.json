@@ -23,9 +23,12 @@
     "test:exercise-data": "node e2e/exercise-data.mjs",
     "test:exercise-review": "node e2e/exercise-review.mjs",
     "e2e:workout-overview": "node e2e/workout-overview.mjs",
-    "e2e:workout-review": "node e2e/workout-review.mjs"
+    "e2e:workout-review": "node e2e/workout-review.mjs",
+    "test:invitations": "vitest run tests/invitations.test.ts",
+    "test:ai": "vitest run tests/ai.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@convex-dev/better-auth": "^0.12.5",
     "barcode-detector": "^3.2.2",
     "better-auth": "~1.6.15",
@@ -40,8 +43,10 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
+    "convex-test": "^0.0.60",
     "playwright-core": "^1.62.1",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "^4.1.11"
   }
 }

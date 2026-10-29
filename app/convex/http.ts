@@ -7,7 +7,7 @@ const http = httpRouter()
 // origin. CORS is required because the app is on a different domain; the
 // invite-code header rides along with sign-up requests.
 authComponent.registerRoutes(http, createAuth, {
-  cors: { allowedHeaders: ['x-invite-code'] },
+  cors: { allowedHeaders: ['x-invite-code', 'x-invitation-token'] },
 })
 
 export default http

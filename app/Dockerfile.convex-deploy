@@ -5,4 +5,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY convex ./convex
+# household AI prompts are shared with the app; convex/ai.ts imports them
+COPY src/lib/ai-prompts.ts ./src/lib/ai-prompts.ts
 CMD ["sh", "-c", "if [ -z \"$CONVEX_SELF_HOSTED_ADMIN_KEY\" ]; then echo 'CONVEX_SELF_HOSTED_ADMIN_KEY not set — skipping function deploy (expected on first boot)'; exit 0; fi; npx convex deploy -y --typecheck disable"]

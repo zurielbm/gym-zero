@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { primeRestChime, playRestChime } from '../lib/rest-chime'
 import { useApp } from '../AppContext'
 import { Seg } from '../components/Seg'
+import { InvitationsCard } from '../components/InvitationsCard'
+import { AiSettingsCard } from '../components/AiSettingsCard'
+import { AiUsageCard } from '../components/AiUsageCard'
 import { currentUser } from '../data/auth-store'
 import { countRows, exportBackup, importBackup, parseBackup } from '../data/backup'
-import { claimByPassphrase, syncNow, syncStore } from '../data/sync'
+import { claimByPassphrase, syncConfigured, syncNow, syncStore } from '../data/sync'
 import { useAction, useFeedback } from '../components/Feedback'
-import { aiConfig, probeAi } from '../lib/ai'
 import { autoWaterTargetOz } from '../lib/hydration'
 import { probeFoodDb, SUPPORTED_SOURCE_SCHEMAS, type FoodDbMeta } from '../lib/food-sources'
 import { signOut } from '../lib/auth-client'
@@ -225,82 +227,6 @@ function TrainingProfileCard() {
           onBlur={() => void patch({ limitations: limitations.trim() || undefined })}
         />
       </div>
-    </div>
-  )
-}
-
-function AiCard() {
-  const { api, settings, refreshSettings } = useApp()
-  const action = useAction()
-  const notify = useFeedback()
-  const [endpoint, setEndpoint] = useState(settings.aiEndpoint ?? '')
-  const [apiKey, setApiKey] = useState(settings.aiApiKey ?? '')
-  const [model, setModel] = useState(settings.aiModel ?? '')
-  const [state, setState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
-
-  const save = async () => {
-    setState('testing')
-    const next = {
-      aiEndpoint: endpoint.trim() || undefined,
-      aiApiKey: apiKey.trim() || undefined,
-      aiModel: model.trim() || undefined,
-    }
-    try {
-      await api.patchSettings(next)
-      await refreshSettings()
-      const config = aiConfig({ ...settings, ...next })
-      if (!config) { setState('idle'); notify('AI turned off'); return }
-      const ok = await probeAi(config)
-      setState(ok ? 'ok' : 'fail')
-      notify(ok ? 'AI settings saved · connection ready' : 'Settings saved. The AI connection could not be verified.', { error: !ok })
-    } catch (error) { setState('fail'); throw error }
-  }
-
-  return (
-    <div className="card">
-      <div className="row">
-        <span className="lab">✦ AI assist — CLIProxyAPI</span>
-        {state === 'ok' && <span className="lab lm" role="status">Connected ✓</span>}
-        {state === 'fail' && <span className="lab" role="status" style={{ color: 'var(--danger)' }}>Unreachable</span>}
-      </div>
-      <span className="small" style={{ display: 'block', margin: '6px 0 8px' }}>
-        Connect your AI endpoint for food estimates and machine guidance. You can check the connection again from any AI screen.
-      </span>
-      <div className="field">
-        <label>Endpoint</label>
-        <input
-          className="text-in" placeholder="https://optiplex.tailnet.ts.net" autoCapitalize="off" autoCorrect="off"
-          disabled={state === 'testing'} aria-label="AI endpoint" value={endpoint} onChange={(e) => { setEndpoint(e.target.value); setState('idle') }}
-        />
-      </div>
-      <div className="in-grid">
-        <div className="field" style={{ margin: 0 }}>
-          <label>API key</label>
-          <input
-            className="text-in" type="password" placeholder="sk-…"
-            disabled={state === 'testing'} aria-label="AI API key" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setState('idle') }}
-          />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Model</label>
-          <input
-            className="text-in" placeholder="gpt-5.6-luna" autoCapitalize="off" autoCorrect="off"
-            disabled={state === 'testing'} aria-label="AI model" value={model} onChange={(e) => { setModel(e.target.value); setState('idle') }}
-          />
-        </div>
-      </div>
-      <div style={{ height: 10 }} />
-      <button className="ghost-btn" style={{ width: 'auto', padding: '10px 18px' }} disabled={state === 'testing'} onClick={() => void action.run(save)}>
-        {state === 'testing' ? 'Testing…' : 'Test & save'}
-      </button>
-      {state === 'fail' && (
-        <span className="small" style={{ color: 'var(--danger)', display: 'block', marginTop: 6 }}>
-          {(endpoint.trim().startsWith('http://') && window.location.protocol === 'https:')
-            || /^(https?:\/\/)?\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(endpoint.trim().replace(/\/+$/, ''))
-            ? 'The browser can only call an https:// endpoint, and an IP address can\'t get a certificate — it has to be a name. On the proxy machine run "sudo tailscale serve --bg localhost:8317", then use its https://…ts.net address here (no port).'
-            : "Saved, but the proxy didn't answer. Are you on Tailscale, and is the endpoint HTTPS?"}
-        </span>
-      )}
     </div>
   )
 }
@@ -620,9 +546,11 @@ export function SettingsScreen() {
       <h1 className="p-h1" style={{ margin: '8px 0 14px' }}>Settings<span className="dot">.</span></h1>
       <MyMachinesCard />
       <AccountCard />
+      {syncConfigured && currentUser() && <InvitationsCard />}
       <TargetsCard />
       <RestSoundCard />
-      <AiCard />
+      <AiSettingsCard />
+      {syncConfigured && currentUser() && <AiUsageCard />}
       <FoodDbCard />
       <TrainingProfileCard />
       <MyStrengthCard />

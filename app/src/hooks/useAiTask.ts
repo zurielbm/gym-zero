@@ -28,7 +28,11 @@ export function useAiTask() {
     controller.current = current
     setBusy(true); setElapsed(0); setLabel(description); setError(null); setMessage('')
     try {
-      const result = await task({ signal: current.signal, onRetry: () => setLabel('Connection interrupted. Trying once more…') })
+      const result = await task({
+        signal: current.signal,
+        onRetry: () => setLabel('Connection interrupted. Trying once more…'),
+        onFallback: () => setLabel('Your own key isn’t reachable. Using household AI…'),
+      })
       if (!current.signal.aborted) await accept(result)
     } catch (err) {
       if (!current.signal.aborted) setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')

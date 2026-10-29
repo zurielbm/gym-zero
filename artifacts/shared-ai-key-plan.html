@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan(gy): Shared Claude key with usage limits</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 76 76'%3E%3Crect width='76' height='76' rx='16' fill='%230c0c0d'/%3E%3Cpath fill='%23ffffff' d='M20,17L43.25,17L56,29.75L56,59L20,59ZM24,21L24,55L52,55L52,34L39,34L39,21ZM43,22.25L43,30L50.75,30ZM30,48L34,48L34,39.5L37,42.5L37,37.75L32,32.75L27,38.25L27,42.5L30,39.5ZM38,49L38,53L26,53L26,49Z'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f0f11; --surface: #141416; --surface-2: #1c1c1f; --hairline: #26262b; --edge: #2e2e33;
+    --ink: #f4f4f2; --muted: #a6a69e; --faint: #6f6f68; --ghost: #3a3a3e;
+    --lime: #d8f34f; --on-lime: #101204; --lime-dim: rgba(216, 243, 79, 0.12); --danger: #ff5a3d;
+    --water: #6db3f2; --carb: #e8a06a; --fat: #c58bf2;
+    --r-sm: 10px; --r: 16px; --r-lg: 22px;
+    --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font-family: var(--body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 48px 20px 96px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(1.9rem, 5vw, 2.7rem); font-weight: 800; line-height: 1.1; }
+  h2 { font-size: 1.45rem; font-weight: 800; margin: 56px 0 6px; }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 22px 0 6px; }
+  p { margin: 8px 0; color: #dcdcd6; }
+  .kicker { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lime); }
+  .sub { color: var(--muted); font-size: 1.04rem; max-width: 720px; margin-top: 12px; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--hairline); padding: 1px 6px; border-radius: 6px; color: #e9e9e2; }
+  pre { font-family: var(--mono); font-size: 0.82rem; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 14px 16px; overflow-x: auto; color: #e3e3dc; line-height: 1.6; }
+  pre .c { color: var(--faint); }
+  .pill { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--lime-dim); color: var(--lime); border: 1px solid rgba(216,243,79,.25); }
+  .pill.warn { background: rgba(255,90,61,.1); color: var(--danger); border-color: rgba(255,90,61,.3); }
+  .pill.blue { background: rgba(109,179,242,.1); color: var(--water); border-color: rgba(109,179,242,.3); }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .box { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 16px 18px; }
+  .box h3 { margin-top: 0; }
+  .box p { font-size: 0.92rem; }
+  .tldr { background: linear-gradient(180deg, rgba(216,243,79,.07), rgba(216,243,79,.02)); border: 1px solid rgba(216,243,79,.25); border-radius: var(--r-lg); padding: 20px 22px; margin-top: 28px; }
+  .tldr ol { margin: 8px 0 0; padding-left: 20px; }
+  .tldr li { margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tablebox { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); overflow: hidden; overflow-x: auto; }
+  svg text { font-family: var(--body); }
+  .diagram { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px; overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; min-width: 720px; height: auto; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+  /* phases */
+  .phase { display: grid; grid-template-columns: 54px 1fr; gap: 14px; margin: 14px 0; }
+  .phase .num { width: 54px; height: 54px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--edge); display: grid; place-items: center; font-weight: 800; font-size: 1.3rem; color: var(--lime); }
+  .phase .body { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 14px 16px; }
+  .phase .body h3 { margin: 0 0 4px; }
+  .phase ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.9rem; color: #d6d6cf; }
+  .phase li { margin: 4px 0; }
+  .files { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); margin-top: 8px; }
+
+  /* layered limits */
+  .layers { display: grid; gap: 8px; }
+  .layer { display: grid; grid-template-columns: 170px 1fr auto; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 12px 16px; }
+  .layer b { font-size: 0.92rem; }
+  .layer span { font-size: 0.86rem; color: var(--muted); }
+  @media (max-width: 640px) { .layer { grid-template-columns: 1fr; gap: 4px; } }
+
+  /* ---------- app mockups (Gym Zero tokens) ---------- */
+  .mocks { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .mockcol { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .mockcap { font-size: 0.8rem; color: var(--muted); max-width: 300px; text-align: center; }
+  .phone { width: 300px; background: #0c0c0d; border: 1px solid var(--edge); border-radius: 34px; padding: 14px 12px 18px; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+  .phone .notch { width: 90px; height: 20px; background: #050506; border-radius: 0 0 14px 14px; margin: -14px auto 12px; }
+  .scr-title { font-size: 1.25rem; font-weight: 800; margin: 2px 4px 12px; }
+  .m-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 13px; margin-bottom: 10px; }
+  .m-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .m-lab { font-size: 0.68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+  .m-lab.lm { color: var(--lime); }
+  .m-small { font-size: 0.78rem; color: var(--muted); display: block; margin: 6px 0 8px; line-height: 1.45; }
+  .m-seg { display: flex; gap: 3px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px; margin: 4px 0 10px; }
+  .m-seg span { flex: 1; text-align: center; font-size: 0.8rem; font-weight: 700; padding: 8px 6px; border-radius: 999px; color: var(--muted); }
+  .m-seg span.on { background: var(--lime); color: var(--on-lime); }
+  .m-btn { display: flex; align-items: center; justify-content: center; min-height: 40px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--hairline); font-weight: 700; font-size: 0.82rem; padding: 0 16px; }
+  .m-btn.lime { background: var(--lime); color: var(--on-lime); border-color: var(--lime); }
+  .m-btn.dis { opacity: .45; }
+  .m-btn.danger { color: var(--danger); border-color: #4d2a22; background: transparent; }
+  .meter { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 8px 0 4px; }
+  .meter > i { display: block; height: 100%; background: var(--lime); border-radius: 99px; }
+  .meter.hot > i { background: var(--carb); }
+  .meter.over > i { background: var(--danger); }
+  .big { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .big small { font-size: .8rem; color: var(--muted); font-weight: 600; }
+  .urow { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 9px 0; border-top: 1px solid var(--hairline); font-size: 0.82rem; }
+  .urow:first-of-type { border-top: 0; }
+  .urow .who { font-weight: 700; }
+  .urow .amt { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  .urow .meta { color: var(--muted); font-size: 0.74rem; }
+  .urow .meter { grid-column: 1 / -1; margin: 4px 0 0; height: 5px; }
+  .tag { font-size: 0.66rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,90,61,.12); color: var(--danger); margin-left: 6px; letter-spacing: .04em; }
+  .tag.ok { background: var(--lime-dim); color: var(--lime); }
+  .field-m { margin-bottom: 9px; }
+  .field-m label { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .in-m { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); min-height: 42px; padding: 10px 12px; font-size: 0.9rem; color: var(--ink); }
+  .toggle { width: 44px; height: 26px; border-radius: 99px; background: var(--ghost); position: relative; flex: none; }
+  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); }
+  .toggle.on { background: var(--lime); }
+  .toggle.on::after { left: 21px; background: var(--on-lime); }
+  .grayed { opacity: .5; }
+  .sheet { background: var(--surface); border: 1px solid var(--edge); border-radius: 22px 22px 0 0; padding: 14px 13px 6px; margin: 0 -12px -18px; }
+  .grab { width: 38px; height: 4px; border-radius: 9px; background: var(--ghost); margin: 0 auto 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip { font-size: 0.78rem; font-weight: 700; padding: 7px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--hairline); color: var(--muted); }
+  .chip.on { background: var(--lime-dim); color: var(--lime); border-color: rgba(216,243,79,.35); }
+
+
+  .disp { font-family: Anton, 'Arial Narrow', 'Helvetica Neue', sans-serif; font-weight: 800; font-stretch: condensed; font-size: 2rem; letter-spacing: .01em; line-height: 1.05; }
+  .src { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 13px; margin-bottom: 10px; }
+  .src.on { border-color: rgba(216,243,79,.55); background: linear-gradient(180deg, rgba(216,243,79,.06), var(--surface)); }
+  .src b { font-size: .92rem; display: block; }
+  .src .m-row { align-items: flex-start; gap: 10px; }
+  .src-foot { border-top: 1px solid var(--hairline); margin-top: 10px; padding-top: 9px; font-size: .78rem; font-weight: 700; }
+  .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--ghost); flex: none; margin-top: 1px; }
+  .radio.on { border-color: var(--lime); box-shadow: inset 0 0 0 4px #141416, inset 0 0 0 10px var(--lime); }
+  .notice { margin-top: 10px; background: rgba(255,90,61,.06); border: 1px solid rgba(255,90,61,.28); border-radius: 12px; padding: 11px 12px; }
+  .notice b { display: block; font-size: .86rem; }
+  .notice span { font-size: .78rem; color: var(--muted); }
+  .gauge { position: relative; display: grid; place-items: center; height: 172px; }
+  .gauge-in { position: absolute; top: 52px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .li { display: flex; justify-content: space-between; align-items: center; min-height: 44px; font-size: .84rem; font-weight: 600; border-top: 1px solid var(--hairline); }
+  .m-card > .li:first-child { border-top: 0; }
+  .li .lm, .lm { color: var(--lime); }
+  .tag.own { background: rgba(197,139,242,.14); color: var(--fat); }
+  .stepper { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 4px 0 6px; }
+  .step { width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--hairline); display: grid; place-items: center; font-size: 1.3rem; font-weight: 700; }
+  td a, .qa a { color: var(--lime); }
+
+  /* Q&A */
+  .qa { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px 20px; margin: 14px 0; }
+  .qa .q { font-weight: 800; font-size: 1.04rem; }
+  .qa .why { font-size: 0.88rem; color: var(--muted); margin: 6px 0 10px; }
+  .qa .why b { color: #cfcfc8; }
+  .opts { display: grid; gap: 8px; }
+  .opt { border: 1px solid var(--hairline); background: var(--surface-2); border-radius: 12px; padding: 10px 12px; font-size: 0.88rem; }
+  .opt.rec { border-color: rgba(216,243,79,.45); background: rgba(216,243,79,.05); }
+  .opt b { display: block; margin-bottom: 2px; }
+  .opt .r { font-size: 0.68rem; font-weight: 800; color: var(--lime); letter-spacing: .08em; text-transform: uppercase; margin-left: 6px; }
+  footer { margin-top: 60px; color: var(--faint); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="kicker">Plan · Gym Zero</div>
+<h1>One shared Claude key, metered and capped per person</h1>
+<p class="sub">Today every user has to paste in their own AI endpoint and key. This plan moves one official Anthropic API key onto the server so everyone you invite gets AI out of the box. You can see what each person spends and cap or cut off anyone.</p>
+
+<div class="tldr">
+  <div class="kicker" style="margin-bottom:4px">The plan in five lines</div>
+  <ol>
+    <li><b>The key lives only on the server</b>, as a Convex environment variable. It is never sent to a phone.</li>
+    <li><b>Phones call a Convex action</b> (<code>ai.run</code>), not the AI directly. The action checks who you are and whether you're under your limit, then calls Anthropic.</li>
+    <li><b>The server owns the prompts.</b> The phone sends <i>"food photo + note"</i>, not a free-form prompt, so nobody can use your key as a general-purpose chatbot.</li>
+    <li><b>Every call is logged</b> with its tokens and cost, which feeds an admin-only <b>AI usage</b> card in Settings.</li>
+    <li><b>Limits are layered:</b> a per-person monthly $ cap, a burst rate limit, a block switch, a global kill switch, and a hard spend cap in the Anthropic Console as the last backstop.</li>
+    <li><b>Bring-your-own-key stays.</b> Each person picks <b>Household AI</b> (the server key, metered) or <b>Your own key</b> (Anthropic, OpenAI, or a custom endpoint like your CLIProxyAPI). Own-key calls go straight from the phone and never count against the household budget.</li>
+  </ol>
+</div>
+
+<!-- ============ ARCHITECTURE ============ -->
+<h2>Today vs. after</h2>
+<p>The current design calls the AI straight from the phone because your CLIProxyAPI is reachable only on your tailnet, so a server hop would break it. Anthropic's API is public, so for the shared key the server hop is now the <i>right</i> design. It's the only place a secret can live safely. The direct path stays as <b>Your own key</b>, because the server can't reach your tailnet.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 960 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture before and after">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#a6a69e"/></marker>
+    <marker id="arl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#d8f34f"/></marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#ff5a3d"/></marker>
+  </defs>
+  <!-- TODAY -->
+  <text x="20" y="28" fill="#a6a69e" font-size="12" font-weight="700" letter-spacing="1.5">TODAY</text>
+  <rect x="20" y="44" width="170" height="74" rx="14" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="105" y="74" fill="#f4f4f2" font-size="14" font-weight="700" text-anchor="middle">Each phone</text>
+  <text x="105" y="96" fill="#a6a69e" font-size="11.5" text-anchor="middle">key typed into Settings</text>
+  <line x1="190" y1="81" x2="340" y2="81" stroke="#a6a69e" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="265" y="70" fill="#a6a69e" font-size="11" text-anchor="middle">direct, over Tailscale</text>
+  <rect x="345" y="44" width="200" height="74" rx="14" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="445" y="74" fill="#f4f4f2" font-size="14" font-weight="700" text-anchor="middle">CLIProxyAPI</text>
+  <text x="445" y="96" fill="#a6a69e" font-size="11.5" text-anchor="middle">OptiPlex · tailnet only</text>
+  <text x="600" y="72" fill="#ff5a3d" font-size="12" font-weight="700">✕ only people on your tailnet</text>
+  <text x="600" y="92" fill="#ff5a3d" font-size="12" font-weight="700">✕ no usage visibility, no limits</text>
+
+  <line x1="20" y1="150" x2="940" y2="150" stroke="#26262b" stroke-dasharray="4 6"/>
+
+  <!-- AFTER -->
+  <text x="20" y="182" fill="#d8f34f" font-size="12" font-weight="700" letter-spacing="1.5">AFTER</text>
+  <rect x="20" y="206" width="170" height="92" rx="14" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="105" y="238" fill="#f4f4f2" font-size="14" font-weight="700" text-anchor="middle">Any signed-in phone</text>
+  <text x="105" y="260" fill="#a6a69e" font-size="11.5" text-anchor="middle">no key, no setup</text>
+  <text x="105" y="280" fill="#a6a69e" font-size="11.5" text-anchor="middle">sends feature + inputs</text>
+
+  <line x1="190" y1="252" x2="290" y2="252" stroke="#d8f34f" stroke-width="2" marker-end="url(#arl)"/>
+  <text x="240" y="241" fill="#d8f34f" font-size="11" text-anchor="middle">ai.run</text>
+
+  <rect x="295" y="186" width="330" height="200" rx="16" fill="rgba(216,243,79,0.05)" stroke="rgba(216,243,79,0.4)"/>
+  <text x="460" y="210" fill="#d8f34f" font-size="12.5" font-weight="800" text-anchor="middle">Convex (self-hosted)</text>
+  <rect x="315" y="224" width="140" height="44" rx="10" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="385" y="243" fill="#f4f4f2" font-size="12" font-weight="700" text-anchor="middle">1 · Who are you?</text>
+  <text x="385" y="259" fill="#a6a69e" font-size="10.5" text-anchor="middle">Better Auth session</text>
+  <rect x="465" y="224" width="140" height="44" rx="10" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="535" y="243" fill="#f4f4f2" font-size="12" font-weight="700" text-anchor="middle">2 · Under limit?</text>
+  <text x="535" y="259" fill="#a6a69e" font-size="10.5" text-anchor="middle">reserve est. cost</text>
+  <rect x="315" y="278" width="140" height="44" rx="10" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="385" y="297" fill="#f4f4f2" font-size="12" font-weight="700" text-anchor="middle">3 · Build prompt</text>
+  <text x="385" y="313" fill="#a6a69e" font-size="10.5" text-anchor="middle">server-owned prompts</text>
+  <rect x="465" y="278" width="140" height="44" rx="10" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="535" y="297" fill="#f4f4f2" font-size="12" font-weight="700" text-anchor="middle">5 · Log + settle</text>
+  <text x="535" y="313" fill="#a6a69e" font-size="10.5" text-anchor="middle">tokens → $ → aiUsage</text>
+  <rect x="315" y="332" width="290" height="40" rx="10" fill="#141416" stroke="#26262b"/>
+  <text x="460" y="357" fill="#a6a69e" font-size="11.5" text-anchor="middle">🔑 ANTHROPIC_API_KEY  (env var, never leaves the server)</text>
+
+  <line x1="625" y1="270" x2="745" y2="270" stroke="#d8f34f" stroke-width="2" marker-end="url(#arl)"/>
+  <text x="685" y="259" fill="#d8f34f" font-size="11" text-anchor="middle">4 · /v1/messages</text>
+  <rect x="750" y="230" width="190" height="80" rx="14" fill="#1c1c1f" stroke="#2e2e33"/>
+  <text x="845" y="260" fill="#f4f4f2" font-size="14" font-weight="700" text-anchor="middle">Anthropic API</text>
+  <text x="845" y="281" fill="#a6a69e" font-size="11.5" text-anchor="middle">Haiku 5.5 / Sonnet 5.5</text>
+  <text x="845" y="298" fill="#a6a69e" font-size="11" text-anchor="middle">workspace spend cap</text>
+
+  <rect x="20" y="326" width="170" height="60" rx="14" fill="#1c1c1f" stroke="#6db3f2" stroke-opacity=".6"/>
+  <text x="105" y="351" fill="#6db3f2" font-size="13" font-weight="700" text-anchor="middle">You (admin)</text>
+  <text x="105" y="370" fill="#a6a69e" font-size="11" text-anchor="middle">Settings → AI usage</text>
+  <path d="M190,356 C240,356 250,356 292,352" stroke="#6db3f2" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="5 4"/>
+  <text x="240" y="398" fill="#6db3f2" font-size="11" text-anchor="middle">see spend · set caps · block</text>
+  <path d="M190,216 C300,172 700,172 820,228" stroke="#c58bf2" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+  <text x="640" y="176" fill="#c58bf2" font-size="11" font-weight="700" text-anchor="middle">Your own key: straight from the phone · not metered</text>
+</svg>
+<div class="legend"><span><i style="background:#d8f34f"></i>household AI path</span><span><i style="background:#c58bf2"></i>your-own-key path</span><span><i style="background:#6db3f2"></i>admin controls</span><span><i style="background:#ff5a3d"></i>today's gaps</span></div>
+</div>
+
+<!-- ============ KEY SETUP ============ -->
+<h2>Adding the key (one-time, ~5 minutes)</h2>
+<p>Your Convex is self-hosted, so the key goes in the same place as <code>BETTER_AUTH_SECRET</code> and <code>INVITE_CODE</code> already do: Convex's environment, not <code>docker-compose.yml</code> and never a <code>VITE_*</code> variable. Anything prefixed <code>VITE_</code> gets baked into the JavaScript every phone downloads.</p>
+<div class="grid g2">
+  <div class="box">
+    <h3>1 · In the Anthropic Console</h3>
+    <p>Create a workspace called <b>gym-zero</b> so this app's spend is separate from anything else you use the key for.</p>
+    <p>Set a <b>workspace monthly spend limit</b> (e.g. $25). It's a hard ceiling enforced by Anthropic even if our code has a bug.</p>
+    <p>Create an API key inside that workspace.</p>
+  </div>
+  <div class="box">
+    <h3>2 · Into Convex</h3>
+<pre><span class="c"># same shell setup as DEPLOY.md step 7</span>
+export CONVEX_SELF_HOSTED_URL=https://convex.…
+export CONVEX_SELF_HOSTED_ADMIN_KEY='…'
+npx convex env set ANTHROPIC_API_KEY sk-ant-…
+npx convex env set AI_ADMIN_EMAILS you@example.com
+npx convex env set AI_USER_MONTHLY_USD 1
+npx convex env set AI_GLOBAL_MONTHLY_USD 20</pre>
+    <p style="font-size:.84rem;color:var(--muted)">Defaults come from env vars; per-person overrides are set in the app. The self-hosted backend needs outbound HTTPS to <code>api.anthropic.com</code>.</p>
+  </div>
+</div>
+
+<!-- ============ REQUEST FLOW ============ -->
+<h2>What happens on one food photo</h2>
+<div class="diagram">
+<svg viewBox="0 0 960 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sequence of a single AI request">
+  <defs><marker id="sq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#a6a69e"/></marker>
+  <marker id="sql" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#d8f34f"/></marker></defs>
+  <g font-size="12.5" font-weight="700" text-anchor="middle" fill="#f4f4f2">
+    <rect x="40" y="10" width="140" height="34" rx="10" fill="#1c1c1f" stroke="#2e2e33"/><text x="110" y="32">Phone</text>
+    <rect x="290" y="10" width="160" height="34" rx="10" fill="#1c1c1f" stroke="#2e2e33"/><text x="370" y="32">ai.run (action)</text>
+    <rect x="540" y="10" width="160" height="34" rx="10" fill="#1c1c1f" stroke="#2e2e33"/><text x="620" y="32">aiUsage (db)</text>
+    <rect x="780" y="10" width="140" height="34" rx="10" fill="#1c1c1f" stroke="#2e2e33"/><text x="850" y="32">Anthropic</text>
+  </g>
+  <g stroke="#26262b" stroke-dasharray="3 5"><line x1="110" y1="44" x2="110" y2="320"/><line x1="370" y1="44" x2="370" y2="320"/><line x1="620" y1="44" x2="620" y2="320"/><line x1="850" y1="44" x2="850" y2="320"/></g>
+  <g font-size="11.5" fill="#dcdcd6">
+    <line x1="110" y1="74" x2="366" y2="74" stroke="#d8f34f" stroke-width="2" marker-end="url(#sql)"/><text x="238" y="66" text-anchor="middle">{ feature: "foodPhoto", photo, note }</text>
+    <line x1="370" y1="110" x2="616" y2="110" stroke="#a6a69e" stroke-width="1.6" marker-end="url(#sq)"/><text x="495" y="102" text-anchor="middle">reserve: spent + ~1¢ ≤ cap? rate ok? not blocked?</text>
+    <line x1="620" y1="136" x2="374" y2="136" stroke="#a6a69e" stroke-width="1.6" marker-end="url(#sq)"/><text x="495" y="154" text-anchor="middle">ok → pending row id</text>
+    <line x1="370" y1="186" x2="846" y2="186" stroke="#d8f34f" stroke-width="2" marker-end="url(#sql)"/><text x="610" y="178" text-anchor="middle">claude-haiku-5-5 · effort low · server-built prompt + image</text>
+    <line x1="850" y1="216" x2="374" y2="216" stroke="#a6a69e" stroke-width="1.6" marker-end="url(#sq)"/><text x="610" y="234" text-anchor="middle">JSON + usage { input_tokens, output_tokens, cache_read… }</text>
+    <line x1="370" y1="262" x2="616" y2="262" stroke="#a6a69e" stroke-width="1.6" marker-end="url(#sq)"/><text x="495" y="254" text-anchor="middle">settle: actual cost ($0.0004)</text>
+    <line x1="366" y1="298" x2="114" y2="298" stroke="#d8f34f" stroke-width="2" marker-end="url(#sql)"/><text x="238" y="290" text-anchor="middle">parsed result (same shape as today)</text>
+  </g>
+</svg>
+</div>
+<p style="font-size:.9rem;color:var(--muted)"><b style="color:var(--ink)">Why reserve before calling?</b> If someone fires five photo logs at once, each one checks the limit before any of them has finished and been billed. Reserving an estimate first closes that gap. The reservation becomes the real cost when the call finishes, or zero if it failed.</p>
+
+<!-- ============ MODEL ROUTING ============ -->
+<h2>Which model each feature uses</h2>
+<p>The server picks the model per feature, so the phone can't ask for an expensive one. The table is a single config object, easy to change later.</p>
+<div class="tablebox"><table>
+  <tr><th>Feature (today's function)</th><th>Model</th><th>Effort</th><th>Est. cost / call</th></tr>
+  <tr><td>Food from text <code>parseFood</code></td><td>Haiku 5.5</td><td>low</td><td class="n">~$0.0002</td></tr>
+  <tr><td>Food from photo <code>parseFoodPhoto</code></td><td>Haiku 5.5</td><td>low</td><td class="n">~$0.0004</td></tr>
+  <tr><td>Equipment photo <code>identifyExercisePhoto</code></td><td>Haiku 5.5</td><td>medium</td><td class="n">~$0.0008</td></tr>
+  <tr><td>Exercise from description <code>identifyExerciseDescription</code></td><td>Haiku 5.5</td><td>low</td><td class="n">~$0.0005</td></tr>
+  <tr><td>Machine QR guide <code>fetchMachineInfo</code></td><td>Haiku 5.5</td><td>low</td><td class="n">~$0.0005</td></tr>
+  <tr><td>Program recommendation <code>recommendProgram</code></td><td>Haiku 5.5 <span class="pill blue">or Sonnet · Q5</span></td><td>medium</td><td class="n">~$0.002 / $0.03</td></tr>
+  <tr><td>Workout &amp; progress review <code>workout-review</code></td><td>Haiku 5.5 <span class="pill blue">or Sonnet · Q5</span></td><td>medium</td><td class="n">~$0.003 / $0.05</td></tr>
+</table></div>
+<p style="font-size:.86rem;color:var(--muted)">Prices: Haiku 5.5 $0.10 / $0.50 per million input/output tokens; Sonnet 5.5 $2 / $10. Thinking counts as output tokens, which is why effort is set per feature. The large system prompts (the exercise catalog) get prompt caching, so repeat calls pay about a tenth for that part.</p>
+
+<!-- ============ METERING DATA ============ -->
+<h2>What gets stored</h2>
+<div class="grid g3">
+  <div class="box">
+    <span class="pill">new table</span>
+    <h3><code>aiUsage</code> · one row per call</h3>
+    <p style="font-family:var(--mono);font-size:.78rem;color:var(--muted);line-height:1.7">userId · feature · model<br>inputTokens · outputTokens<br>cacheReadTokens<br>costMicros <span style="color:var(--faint)">(1 = $0.000001)</span><br>status: pending | ok | error | refused<br>at</p>
+    <p>Indexed by user+time and by time. It's the audit trail behind every number.</p>
+  </div>
+  <div class="box">
+    <span class="pill">new table</span>
+    <h3><code>aiMonthly</code> · running totals</h3>
+    <p style="font-family:var(--mono);font-size:.78rem;color:var(--muted);line-height:1.7">userId · month ("2026-11")<br>costMicros · requests · photos</p>
+    <p>Updated on reserve and settle, so a limit check is one lookup instead of summing a month of rows. Resets when the month changes.</p>
+  </div>
+  <div class="box">
+    <span class="pill">new table</span>
+    <h3><code>aiLimits</code> · overrides</h3>
+    <p style="font-family:var(--mono);font-size:.78rem;color:var(--muted);line-height:1.7">userId → monthlyUsd? · blocked?<br>"global" → paused? · monthlyUsd?</p>
+    <p>Only exists for people you've changed. Everyone else gets the env-var defaults.</p>
+  </div>
+</div>
+<p style="font-size:.86rem;color:var(--muted)">Photos and prompts are <b style="color:var(--ink)">not</b> stored, only counts and cost. Optional later cross-check: Anthropic's Admin API cost report, which needs a separate admin key.</p>
+
+<!-- ============ LIMITS ============ -->
+<h2>The five layers of limits</h2>
+<p>From the most specific to the last resort. A request has to pass all of them.</p>
+<div class="layers">
+  <div class="layer"><b>Per-person rate</b><span>Stops a runaway loop or a stuck button: e.g. 15 calls / 10 min and 40 photos / day, via the <code>@convex-dev/rate-limiter</code> component.</span><span class="pill">automatic</span></div>
+  <div class="layer"><b>Per-person $ / month</b><span>Default from <code>AI_USER_MONTHLY_USD</code>; you can raise or lower it per person. Resets on the 1st.</span><span class="pill">you set</span></div>
+  <div class="layer"><b>Block person</b><span>Instantly turns AI off for one account; the rest of the app keeps working.</span><span class="pill">you toggle</span></div>
+  <div class="layer"><b>Global pause / cap</b><span>One switch turns off shared AI for everyone; the monthly total cap is <code>AI_GLOBAL_MONTHLY_USD</code>.</span><span class="pill">you toggle</span></div>
+  <div class="layer"><b>Anthropic workspace cap</b><span>Enforced by Anthropic outside our code. If everything above fails, this still stops the bill.</span><span class="pill warn">backstop</span></div>
+</div>
+<p>When someone hits a limit, AI buttons <b>gray out with a reason</b> ("Monthly AI limit reached, resets Nov 1"), the same pattern the app already uses when the proxy is unreachable. Manual entry always works.</p>
+
+<!-- ============ MOCKUPS ============ -->
+<h2>Screens</h2>
+<p>Built from the app's own cards, segmented control, and lime accent, with layout ideas from the Mobbin references at the end of this section. Hero numbers use the app's condensed display face.</p>
+
+<h3>For everyone: choosing where AI comes from</h3>
+<div class="mocks">
+
+  <!-- A. Source picker -->
+  <div class="mockcol">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="scr-title">AI assist</div>
+      <span class="m-small" style="margin:-6px 4px 12px">Food estimates, machine help and workout reviews.</span>
+      <div class="src on">
+        <div class="m-row"><span class="radio on"></span><div style="flex:1"><b>Household AI</b><span class="m-small" style="margin:2px 0 0">Shared by everyone here. Nothing to set up.</span></div><span class="m-lab lm">Ready</span></div>
+        <div class="src-foot"><div class="m-row"><span>This month</span><span style="color:var(--muted)">$0.21 of $1 · resets Dec 1</span></div><div class="meter" style="height:6px"><i style="width:21%"></i></div></div>
+      </div>
+      <div class="src">
+        <div class="m-row"><span class="radio"></span><div style="flex:1"><b>Your own key</b><span class="m-small" style="margin:2px 0 0">Anthropic, OpenAI, or your own endpoint. You pay your provider; nothing counts toward the household limit.</span></div></div>
+        <div style="margin-top:10px" class="m-btn">Set up</div>
+      </div>
+      <span class="m-small" style="margin:10px 4px 0">You can switch any time. Your choice is saved to your account.</span>
+    </div>
+    <div class="mockcap">Two selectable cards instead of today's raw endpoint fields. The household card shows how much is left, so the limit is never a surprise.</div>
+  </div>
+
+  <!-- B. Own key setup -->
+  <div class="mockcol">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="grayed"><div class="scr-title">AI assist</div><div class="src on" style="padding:10px 12px"><b style="font-size:.85rem">Household AI</b></div></div>
+      <div style="height:22px"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div style="font-weight:800;font-size:1.05rem;margin-bottom:8px">Your own key</div>
+        <div class="m-seg"><span class="on">Anthropic</span><span>OpenAI</span><span>Custom</span></div>
+        <div class="field-m"><label>API key</label><div class="in-m" style="color:var(--muted)">sk-ant-••••••••••••3f9a</div></div>
+        <div class="field-m"><label>Model</label><div class="in-m">claude-haiku-5-5 <span style="color:var(--faint);font-size:.78rem">· suggested</span></div></div>
+        <span class="m-small" style="margin-top:0">Stays on your account and is sent straight to Anthropic from this phone. The household server never uses it.</span>
+        <div class="m-row" style="margin:4px 0 12px"><span style="font-size:.84rem;font-weight:700;max-width:200px;line-height:1.35">If my key fails, use Household AI</span><span class="toggle on"></span></div>
+        <div class="m-btn lime">Test &amp; save</div>
+        <div style="height:8px"></div>
+      </div>
+    </div>
+    <div class="mockcap">One sheet for all providers. <b>Custom</b> adds an Endpoint field, which is today's CLIProxyAPI setup unchanged. The fallback switch is Q3.</div>
+  </div>
+
+  <!-- E. Limit reached -->
+  <div class="mockcol">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="scr-title">Log food</div>
+      <div class="m-card">
+        <div class="m-btn dis">📷 Snap a meal</div>
+        <div class="notice">
+          <b>Household AI limit reached</b>
+          <span>Your $1 for November is used up. It refreshes in 2 days.</span>
+          <div class="meter over" style="height:6px;margin:8px 0 2px"><i style="width:100%"></i></div>
+          <div class="m-row" style="margin-top:8px;gap:8px"><span class="m-btn" style="flex:1;min-height:36px;font-size:.78rem">Type it in</span><span class="m-btn" style="flex:1;min-height:36px;font-size:.78rem">Use my own key</span></div>
+        </div>
+      </div>
+      <div class="m-card grayed"><div class="m-lab">Today</div><div class="m-small">Breakfast · 420 kcal</div></div>
+    </div>
+    <div class="mockcap">At the limit the button grays out with the reason, when it refreshes, and two ways forward, in the same spirit as today's "proxy unreachable" state.</div>
+  </div>
+</div>
+
+<h3>For you: the admin view</h3>
+<div class="mocks">
+
+  <!-- C. Admin overview -->
+  <div class="mockcol">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="m-row" style="margin:2px 4px 6px"><span class="scr-title" style="margin:0">Household AI</span><span class="m-lab" style="color:var(--water)">Admin</span></div>
+      <div class="gauge">
+        <svg viewBox="0 0 160 140" width="190" height="166" aria-hidden="true">
+          <circle cx="80" cy="80" r="62" fill="none" stroke="#1c1c1f" stroke-width="12" stroke-linecap="round" stroke-dasharray="292.2 389.6" transform="rotate(135 80 80)"/>
+          <circle cx="80" cy="80" r="62" fill="none" stroke="#d8f34f" stroke-width="12" stroke-linecap="round" stroke-dasharray="242.5 389.6" transform="rotate(135 80 80)"/>
+        </svg>
+        <div class="gauge-in"><span class="m-lab">Left this month</span><span class="disp">$16.58</span><span class="m-small" style="margin:0">83% left · 2 days to go</span></div>
+      </div>
+      <div class="m-card" style="padding:4px 13px">
+        <div class="li"><span>Household cap</span><span class="lm">$20 ›</span></div>
+        <div class="li"><span>Default per person</span><span class="lm">$1 ›</span></div>
+        <div class="li"><span>Spent · 412 calls</span><span>$3.42</span></div>
+        <div class="li"><span>Shared AI on</span><span class="toggle on"></span></div>
+      </div>
+      <div class="m-lab" style="margin:12px 4px 6px">People</div>
+      <div class="m-card" style="padding:4px 13px">
+        <div class="urow"><span class="who">Zuriel</span><span class="amt">$0.61</span><span class="meta">128 calls · cap $2</span><span class="meta" style="text-align:right">›</span><div class="meter"><i style="width:31%"></i></div></div>
+        <div class="urow"><span class="who">Maya</span><span class="amt">$0.88</span><span class="meta">96 calls · cap $1</span><span class="meta" style="text-align:right">›</span><div class="meter hot"><i style="width:88%"></i></div></div>
+        <div class="urow"><span class="who">Dad<span class="tag">LIMIT</span></span><span class="amt">$1.00</span><span class="meta">143 calls · cap $1</span><span class="meta" style="text-align:right">›</span><div class="meter over"><i style="width:100%"></i></div></div>
+        <div class="urow"><span class="who">Leo<span class="tag own">OWN KEY</span></span><span class="amt" style="color:var(--muted)">—</span><span class="meta">uses their own key</span><span class="meta" style="text-align:right">›</span></div>
+      </div>
+    </div>
+    <div class="mockcap">A gauge for "how much is left" and per-person bars that turn amber near the cap and red at it. Own-key users are tagged, since their spend isn't yours.</div>
+  </div>
+
+  <!-- D. Per-person sheet -->
+  <div class="mockcol">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="grayed"><div class="scr-title">Household AI</div><div class="gauge" style="height:120px"></div></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="m-row"><span style="font-weight:800;font-size:1.05rem">Maya</span><span class="m-lab">$0.88 used</span></div>
+        <span class="m-small">96 calls · 41 food photos · 12 equipment · 3 reviews</span>
+        <div class="m-lab" style="text-align:center;margin-top:6px">Monthly limit</div>
+        <div class="stepper"><span class="step">−</span><span class="disp" style="font-size:2.6rem">$2</span><span class="step">+</span></div>
+        <span class="m-small" style="text-align:center;margin-top:0">About 13 months of normal use. Good headroom.</span>
+        <div class="li" style="border-top:1px solid var(--hairline)"><span>Allow Household AI</span><span class="toggle on"></span></div>
+        <div class="li"><span>Tell me at 80%</span><span class="toggle"></span></div>
+        <div style="height:10px"></div>
+        <div class="m-btn lime">Save</div>
+        <div style="height:8px"></div>
+      </div>
+    </div>
+    <div class="mockcap">A big number with − / + steps of $0.50, explained in plain words as you change it. Turning off "Allow" is the block.</div>
+  </div>
+</div>
+
+<h3>Inspired by (Mobbin)</h3>
+<div class="tablebox"><table>
+  <tr><th>Reference</th><th>What we borrowed</th><th>Where</th></tr>
+  <tr><td><a href="https://mobbin.com/screens/b578103d-3eca-4520-b50f-1698113428d7">Revolut · Budget</a></td><td>Ring gauge showing <i>left to spend</i>, with "% · days left" under it, then plain rows</td><td>Admin overview</td></tr>
+  <tr><td><a href="https://mobbin.com/screens/5bd538b8-070a-47a4-a847-d5fb0b11bf2c">Wise · Spending limits</a></td><td>"Refreshes in 2 days" wording and a bar with what's remaining</td><td>Your usage, limit reached</td></tr>
+  <tr><td><a href="https://mobbin.com/screens/a6eb6116-b754-45aa-995a-6b339867728f">Setel · Family Wallet</a></td><td>Members with "spent this month" bars, and a "Monthly limit /member ›" preference row</td><td>Admin people list</td></tr>
+  <tr><td><a href="https://mobbin.com/screens/a5d6358e-807d-458a-b59b-9c79f5449bf5">Cleo · Set your limit</a></td><td>One huge condensed number with − / + steppers</td><td>Per-person sheet</td></tr>
+  <tr><td><a href="https://mobbin.com/screens/1f09ca2a-788b-49ad-95b8-03a188c77485">Lyft · Family member</a></td><td>"Allow … to use" and "Notify me when used" switches</td><td>Per-person sheet</td></tr>
+  <tr><td><a href="https://mobbin.com/screens/0a839bf1-5230-40c5-bcfb-d993b1c5aec3">MD Vinyl · Music provider</a> · <a href="https://mobbin.com/screens/8364f13b-0e5c-4084-bf59-673c7a410270">Binance · Data source</a></td><td>Radio cards with a one-line explanation each, with Connect on the card</td><td>Source picker</td></tr>
+</table></div>
+
+<!-- ============ PHASES ============ -->
+<h2>Build order</h2>
+
+<div class="phase"><div class="num">1</div><div class="body">
+  <h3>Server call path <span class="pill">core</span></h3>
+  <ul>
+    <li>Add <code>@anthropic-ai/sdk</code> and a Convex action <code>ai.run({ feature, input })</code> that requires a signed-in user.</li>
+    <li>Move the system prompts and response cleanup out of <code>src/lib/ai.ts</code> into a shared module that both the client and Convex import. The phone sends only the feature's inputs, with size caps (note ≤ 1,000 chars, one photo ≤ ~1 MB).</li>
+    <li>Convert the OpenAI-style <code>image_url</code> data URL into Claude's base64 <code>image</code> block. Drop <code>temperature</code>, which current Claude models reject, and the OpenAI <code>response_format</code>.</li>
+    <li>Map Claude errors to the app's existing friendly messages, including <code>stop_reason: "refusal"</code>.</li>
+  </ul>
+  <div class="files">convex/ai.ts · shared/aiPrompts.ts · src/lib/ai.ts · package.json</div>
+</div></div>
+
+<div class="phase"><div class="num">2</div><div class="body">
+  <h3>Metering</h3>
+  <ul>
+    <li>Add the <code>aiUsage</code> and <code>aiMonthly</code> tables, the <code>reserve</code> and <code>settle</code> internal mutations, and a price table per model, so cost is computed from <code>response.usage</code> in micro-dollars.</li>
+    <li>A failed call settles at its real billed cost, usually $0.</li>
+  </ul>
+  <div class="files">convex/schema.ts · convex/aiUsage.ts · convex/aiPricing.ts</div>
+</div></div>
+
+<div class="phase"><div class="num">3</div><div class="body">
+  <h3>Limits</h3>
+  <ul>
+    <li>Add the <code>aiLimits</code> table, env defaults, and the rate-limiter component (registered next to Better Auth in <code>convex.config.ts</code>).</li>
+    <li><code>ai.myStatus</code> query returns <code>{ available, reason, spent, cap, resetsAt }</code> for the gray-out.</li>
+  </ul>
+  <div class="files">convex/aiLimits.ts · convex/convex.config.ts</div>
+</div></div>
+
+<div class="phase"><div class="num">4</div><div class="body">
+  <h3>Admin card</h3>
+  <ul>
+    <li>Admin is anyone whose email is in <code>AI_ADMIN_EMAILS</code>, checked on the server for every admin query and mutation.</li>
+    <li><code>aiAdmin.overview</code>, <code>setLimit</code>, <code>setBlocked</code>, <code>setPaused</code>, plus the card and sheet shown above.</li>
+  </ul>
+  <div class="files">convex/aiAdmin.ts · src/components/AiUsageCard.tsx · src/screens/Settings.tsx</div>
+</div></div>
+
+<div class="phase"><div class="num">5</div><div class="body">
+  <h3>Source picker and your-own-key</h3>
+  <ul>
+    <li>Settings gains <code>aiSource: 'household' | 'own'</code> plus <code>aiProvider: 'anthropic' | 'openai' | 'custom'</code>. The default is Household whenever the server has a key. Existing users with an endpoint saved are migrated to Own key → Custom, so nothing breaks for you.</li>
+    <li>The own-key path keeps today's direct fetch. It speaks Claude's Messages format for Anthropic (with the header Anthropic requires for calls from a browser) and today's OpenAI-compatible format for OpenAI and Custom. Both formats use the same shared prompts, so results look identical whichever source you use.</li>
+    <li><code>useAiAvailable</code> reads <code>ai.myStatus</code> for Household and keeps the reachability probe for Own key. Every AI screen keeps today's gray-out UI, plus the optional fallback to Household (Q3).</li>
+    <li>Update <code>DEPLOY.md</code> with the key and limit env vars.</li>
+  </ul>
+  <div class="files">src/lib/ai.ts · src/lib/ai-transports.ts · src/screens/Settings.tsx · src/types.ts · DEPLOY.md</div>
+</div></div>
+
+<h3>Risks worth knowing</h3>
+<div class="grid g2">
+  <div class="box"><h3>📷 Photo size</h3><p>A 1280px JPEG is ~200–400 KB as base64, comfortably inside Convex's argument limit. The server still rejects anything oversized, so one bad upload can't make an expensive call.</p></div>
+  <div class="box"><h3>⏱ One extra hop</h3><p>Phone → Convex → Anthropic adds roughly 50–150 ms. That's small next to the AI's own response time.</p></div>
+  <div class="box"><h3>🔒 Privacy</h3><p>Food and equipment photos go to Anthropic under their API data terms. API traffic isn't used for training by default. Worth a line in the app for invitees.</p></div>
+  <div class="box"><h3>🔑 Rotating the key</h3><p>Run <code>npx convex env set</code> again. It takes effect immediately with no redeploy and no change on anyone's phone.</p></div>
+</div>
+
+<!-- ============ Q&A ============ -->
+<h2>Questions for you</h2>
+<p>Each one changes what gets built. Recommended options are highlighted.</p>
+
+<div class="qa">
+  <div class="q">1 · What default monthly limit per person?</div>
+  <div class="why"><b>Why it matters:</b> this is what everyone gets unless you change it. Typical use is about $0.15 a month and a heavy user about $0.45, so the cap mostly guards against bugs and abuse rather than normal use.</div>
+  <div class="opts">
+    <div class="opt"><b>$0.50</b>Tight. A heavy food-photo user could hit it late in the month.</div>
+    <div class="opt rec"><b>$1<span class="r">Recommended</span></b>About 6× typical use. Nobody normal hits it, and a runaway costs at most $1.</div>
+    <div class="opt"><b>$2+</b>Roomy, if you plan to move reviews to Sonnet (Q5).</div>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">2 · Who is an admin?</div>
+  <div class="why"><b>Why it matters:</b> the app has no roles today, and every invited account is equal. Someone has to be able to see everyone's usage and change limits.</div>
+  <div class="opts">
+    <div class="opt rec"><b>Emails in an env var (<code>AI_ADMIN_EMAILS</code>)<span class="r">Recommended</span></b>No new UI or schema. Changing admins is one command. Fine for a household.</div>
+    <div class="opt"><b>An "admin" role in the database</b>Promote people from inside the app. More work, and only useful if admins change often.</div>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">3 · When someone's own key fails, fall back to Household AI?</div>
+  <div class="why"><b>Why it matters:</b> your own-key setup points at a tailnet-only proxy, so whenever you're off Tailscale your AI goes gray. A fallback keeps it working, but those calls then spend household budget, a little.</div>
+  <div class="opts">
+    <div class="opt rec"><b>Per-person switch, on by default<span class="r">Recommended</span></b>AI just works off the tailnet. A small "using Household AI" note shows when it happens, and anyone can turn it off (shown in the own-key sheet).</div>
+    <div class="opt"><b>Never fall back</b>Own key means own key. You'd see the gray-out with "Can't reach your endpoint."</div>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">4 · What happens when someone hits their limit?</div>
+  <div class="why"><b>Why it matters:</b> it decides whether a cap is a hard stop or a soft nudge.</div>
+  <div class="opts">
+    <div class="opt rec"><b>Hard stop until the 1st, with the reason shown<span class="r">Recommended</span></b>Predictable, and matches the existing gray-out behavior. You can raise their limit from the admin card anytime.</div>
+    <div class="opt"><b>Warn at 80%, stop at 100%</b>Adds a small banner the user sees before they're cut off. Slightly more UI.</div>
+    <div class="opt"><b>Let it through and just alert you</b>No interruptions, but then the cap isn't really a limit.</div>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">5 · Haiku or Sonnet for workout reviews and programs?</div>
+  <div class="why"><b>Why it matters:</b> these are the only features where depth of reasoning shows. Sonnet is ~20× the price per token but only runs a few times a week, so it adds about $0.70 per person per month.</div>
+  <div class="opts">
+    <div class="opt rec"><b>Start on Haiku, switch per feature if reviews feel thin<span class="r">Recommended</span></b>It's one line in the model table, so you can decide after reading a few real reviews.</div>
+    <div class="opt"><b>Sonnet from day one</b>Better reviews immediately, about $10 per person per year instead of about $2.</div>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">6 · Should people see their own usage?</div>
+  <div class="why"><b>Why it matters:</b> showing "$0.21 of $1" is transparent but puts money in front of family members, which some find awkward. Hiding it means the limit-reached message is their first sign of a cap.</div>
+  <div class="opts">
+    <div class="opt rec"><b>Show a meter only after 50% used<span class="r">Recommended</span></b>Invisible for normal use. It appears before anyone is surprised.</div>
+    <div class="opt"><b>Always show it</b>As in the Household AI card mockup.</div>
+    <div class="opt"><b>Never show it</b>Admin-only numbers.</div>
+  </div>
+</div>
+
+<footer>Plan(gy) · Gym Zero · 2026-10-29 · prices from Anthropic's model overview, cached 2026-10-06</footer>
+</div>
+</body>
+</html>

@@ -21,26 +21,39 @@ npm run dev -- --port 5199   # in one terminal…
 npm run e2e                  # …e2e flow test in another (needs playwright chromium cache)
 ```
 
-## AI assist (CLIProxyAPI)
+## AI assist
 
-Optional: describe food in plain words to log calories/macros, and identify
-unknown machine QR codes (model, muscle groups, setup + form cues), powered by
-a self-hosted [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
-(OpenAI-compatible) endpoint. The phone calls the proxy **directly**, so AI
-works only while the device can reach it (e.g. on the Tailscale tailnet). Each AI
-screen shows whether the connection is ready, checking, or unavailable. You can
-retry the connection or try a request directly; manual entry stays available.
-Machine identifications are cached per QR code in the `machineAi` table (synced
-like everything else), and can be revised using the guide’s correction field.
+Optional: describe or photograph food to log calories/macros, identify unknown
+machine QR codes and exercises, build starter programs, and review workouts.
+Each person picks where their AI comes from in **Settings → AI assist**:
 
-Setup:
+- **Household AI** (default when the app has an account server): one Anthropic
+  key held on the Convex server, shared by every account. Nothing to set up on
+  the phone. Each call is metered and capped per person; see
+  [DEPLOY.md → Household AI](DEPLOY.md#household-ai-optional) for the key,
+  limits, and admin view. Requests go phone → Convex → Anthropic
+  (`claude-haiku-5-5`), and the server builds every prompt, so the shared key
+  can only run the app's own AI features.
+- **Your own key**: Anthropic, OpenAI, or any OpenAI-compatible endpoint such
+  as a self-hosted [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI).
+  The phone calls the provider **directly**, so a tailnet-only proxy works only
+  while the device can reach it. Own-key use never counts toward the household
+  budget. Optionally, household AI stands in when your own key is unreachable.
+
+Each AI screen shows whether AI is ready, checking, or unavailable (with the
+reason, such as a reached monthly limit and when it refreshes). Manual entry
+always stays available. Machine identifications are cached per QR code in the
+`machineAi` table (synced like everything else), and can be revised using the
+guide’s correction field.
+
+Custom endpoint setup (own key):
 
 1. The app is served over HTTPS, so the proxy must be too or the browser blocks
    the calls as mixed content. On the proxy host:
    `tailscale serve --bg --https=443 localhost:8317`
-2. In the app: **Stats tab → AI assist card** → enter the `https://….ts.net`
-   endpoint, API key, and model id → **Test & save**. The proxy's CORS config
-   must allow the app's origin.
+2. In the app: **Settings → AI assist → Your own key → Custom** → enter the
+   `https://….ts.net` endpoint, API key, and model id → **Test & save**. The
+   proxy's CORS config must allow the app's origin.
 
 ### Exercise photos
 
@@ -56,7 +69,7 @@ likely catalog matches, explains uncertainty, and lets you choose one to log.
 You can edit the description and try again; a photo is not required.
 
 This uses the same AI settings and requires a model that accepts images.
-Photos are resized on the device and sent to the configured proxy only when
+Photos are resized on the device and sent to your AI (household or own key) only when
 you request identification; the app does not save the photo. A still image may
 suggest several movements, especially for equipment with multiple uses.
 
@@ -161,8 +174,34 @@ and add these three variables:
 | `INVITE_CODE` | Choose a private code that family members enter when signing up |
 
 Do not rotate `BETTER_AUTH_SECRET` casually; existing encrypted auth state and
-sessions depend on it. If `INVITE_CODE` is absent, new account registration is
-intentionally disabled.
+sessions depend on it. If `INVITE_CODE` is absent, registration requires a valid
+invitation link. A new deployment still needs the family code to bootstrap its
+first account.
+
+#### Invite someone
+
+In **Settings → Invite someone**, choose **Create invite link**, then copy or
+share the link with your recipient. They open it and create their own private
+account; your workout, food, and body data remain separate.
+
+Links work for seven days and can be used by anyone who holds them until they
+expire or you revoke them in Settings. Revoking a link prevents future signups;
+it does not delete accounts already created. Every signed-in member can invite
+others. There is a limit of 10 active invitations and 20 new invitations per
+account per day. No email service is required; sharing opens your device's
+share sheet or copies the link for you to send.
+
+The complete link is shown only when created, so copy it before leaving the
+screen. The server stores only a SHA-256 hash of its random 256-bit secret.
+Invitation secrets travel in the URL fragment and the signup request header,
+not URL query parameters. Keep links private. Managing invitations requires
+an internet connection and a valid account session. Local-only builds do not
+show invitation controls. The existing family-code signup still works.
+
+Deploy both `app/convex/` (including the new `invitations` table) and the frontend
+to enable this feature. No new environment variables are needed.
+Run `cd app && npm run test:invitations` for server authorization, expiry,
+revocation, signup, CORS, and account-isolation checks.
 
 Alternatively, set the same values with the Convex CLI from a local checkout:
 

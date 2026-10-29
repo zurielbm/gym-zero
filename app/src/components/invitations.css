@@ -1,0 +1,36 @@
+/* Invite card in Settings. Builds on .card/.lab/.small/.text-in/.big-btn/.ghost-btn. */
+.inv { min-width: 0; overflow-wrap: anywhere; }
+.inv-title { margin: 0; }
+.inv-copy { margin: 6px 0 0; line-height: 1.45; }
+.inv-create { margin-top: 12px; }
+.inv-err { color: var(--danger); margin: 8px 0 0; }
+
+.inv-new {
+  margin-top: 12px; padding: 12px; display: grid; gap: 8px;
+  background: var(--lime-dim); border: 1px solid rgba(216, 243, 79, 0.28); border-radius: var(--r-sm);
+}
+.inv-new .small { margin: 0; line-height: 1.45; }
+.inv-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; min-width: 0; }
+.inv-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.inv-actions .ghost-btn { width: auto; flex: 1 1 120px; }
+
+.inv-list { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.inv-list-err { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.inv-list-err .inv-err { flex: 1 1 180px; }
+.inv-small-btn { width: auto; padding: 0 16px; flex: none; }
+.inv-list > .small { display: block; margin: 8px 0 0; }
+
+.inv-rows { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.inv-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2);
+}
+.inv-row-text { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.inv-row-text .small { margin: 0; }
+.inv-row-date { font-size: 0.86rem; font-weight: 700; color: var(--ink); }
+.inv-badge { margin-left: 8px; }
+
+.inv-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

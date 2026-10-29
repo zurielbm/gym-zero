@@ -46,8 +46,13 @@ the sync layer replicates writes to/from the backend (see `app/src/data/sync.ts`
    npx convex env set SITE_URL https://gym.example.com
    npx convex env set INVITE_CODE <something you text the family>
    ```
-   Sign-ups are refused until `INVITE_CODE` is set, and refused with any code
-   that doesn't match it. Rotate or unset it any time to close the door.
+   Set `INVITE_CODE` to create the first account. Members can then create
+   seven-day invitation links in **Settings → Invite someone**, which let
+   recipients create their own private accounts. Rotating or unsetting the
+   family code disables that code; existing invitation links remain valid
+   until expiry or revocation by their creator. Deploy both the Convex
+   functions/schema and frontend when adding invitation support. No new
+   environment variables or email service are required.
 
    ⚠️ Set `BETTER_AUTH_SECRET` **before the first sign-in**. The JWT signing
    key is created on first sign-in and encrypted with the secret — setting or
@@ -58,6 +63,40 @@ the sync layer replicates writes to/from the backend (see `app/src/data/sync.ts`
    ```bash
    npx convex run auth:rotateKeys
    ```
+
+## Household AI (optional)
+
+One Anthropic API key on the server gives every account AI with nothing to set
+up. It lives in the Convex environment, never in compose and never in a
+`VITE_*` variable (those are baked into the JavaScript every phone downloads).
+
+1. **Anthropic Console**: create a workspace (e.g. `gym-zero`), set a
+   **workspace monthly spend limit** as a hard backstop (e.g. $25), and create
+   an API key in that workspace.
+2. **Convex env** (same shell setup as step 7):
+   ```bash
+   npx convex env set ANTHROPIC_API_KEY sk-ant-…
+   npx convex env set AI_ADMIN_EMAILS you@example.com   # comma-separated
+   npx convex env set AI_USER_MONTHLY_USD 1             # default per-person cap
+   npx convex env set AI_GLOBAL_MONTHLY_USD 20          # household cap
+   ```
+   The two limits are optional (defaults: $1 and $20). The self-hosted backend
+   needs outbound HTTPS to `api.anthropic.com`. Rotating the key is another
+   `env set`; it takes effect immediately, with nothing to change on phones.
+
+⚠️ Only list emails that **already have an account**. Sign-up doesn't verify
+email addresses, so an unclaimed admin email could be registered by anyone
+holding an invitation.
+
+Admins (emails in `AI_ADMIN_EMAILS`) get a **Household AI · Admin** card in
+Settings: spend left this month, the household and default caps, a pause
+switch for everyone, and per-person spend with an editable limit and an
+on/off switch. Limits are calendar months (UTC). Each call is recorded with
+its tokens and cost in `aiUsage` (photos and prompts are not stored); burst
+limits (15 calls per 10 minutes, 40 photos a day) stop runaway loops. People
+on their own key are tagged and never count toward the household budget.
+
+Typical use is about $0.16 per person per month on `claude-haiku-5-5`.
 
 ## Accounts
 

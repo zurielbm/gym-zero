@@ -8,8 +8,13 @@
  * @module
  */
 
+import type * as ai from "../ai.js";
+import type * as aiAdmin from "../aiAdmin.js";
+import type * as aiPolicy from "../aiPolicy.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as invitations from "../invitations.js";
+import type * as invitationPolicy from "../invitationPolicy.js";
 import type * as sync from "../sync.js";
 
 import type {
@@ -19,8 +24,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  ai: typeof ai;
+  aiAdmin: typeof aiAdmin;
+  aiPolicy: typeof aiPolicy;
   auth: typeof auth;
   http: typeof http;
+  invitations: typeof invitations;
+  invitationPolicy: typeof invitationPolicy;
   sync: typeof sync;
 }>;
 

@@ -2,7 +2,7 @@ import { createClient, type GenericCtx } from '@convex-dev/better-auth'
 import { convex, crossDomain } from '@convex-dev/better-auth/plugins'
 import { betterAuth } from 'better-auth/minimal'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
-import { components } from './_generated/api'
+import { components, internal } from './_generated/api'
 import type { DataModel } from './_generated/dataModel'
 import { internalAction, query } from './_generated/server'
 import authConfig from './auth.config'
@@ -24,16 +24,21 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       requireEmailVerification: false,
     },
     hooks: {
-      // Family-only signups: the client sends the shared invite code in a
-      // header (see enableSignUp in src/lib/auth-client.ts). No INVITE_CODE
-      // env var means signups are closed entirely.
-      before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/sign-up/email') return
+      // Existing family codes and revocable invitations both grant signup,
+      // never access to the inviting account's personal records.
+      before: createAuthMiddleware(async (request) => {
+        if (request.path !== '/sign-up/email') return
+        const token = request.headers?.get('x-invitation-token')
+        if (token !== null && token !== undefined) {
+          const valid = await ctx.runQuery(internal.invitations.validate, { token })
+          if (!valid) throw new APIError('FORBIDDEN', { message: 'This invitation is invalid, expired, or revoked. Ask for a new link.' })
+          return
+        }
         const expected = process.env.INVITE_CODE
         if (!expected) {
-          throw new APIError('FORBIDDEN', { message: 'Sign-ups are disabled on this server.' })
+          throw new APIError('FORBIDDEN', { message: 'An invitation link is required to create an account on this server.' })
         }
-        if (ctx.headers?.get('x-invite-code') !== expected) {
+        if (request.headers?.get('x-invite-code') !== expected) {
           throw new APIError('FORBIDDEN', { message: 'Invalid invite code.' })
         }
       }),
